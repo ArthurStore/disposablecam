@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Admin Dashboard — Disposable Camera</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <!-- PIN Login -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-icon">🔐</div>
+      <h1>Admin Dashboard</h1>
+      <p>Enter admin PIN to continue</p>
+      <input type="password" id="pin-input" placeholder="PIN" maxlength="10" autocomplete="off">
+      <button id="pin-submit" class="btn-primary">Unlock</button>
+      <p id="pin-error" class="error-text"></p>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden">
+    <header class="admin-header">
+      <h1>📷 Disposable Camera — Admin</h1>
+      <div class="header-actions">
+        <a href="/recap" target="_blank" class="btn-link">📸 Recap Album</a>
+        <a href="/live" target="_blank" class="btn-link">🖥️ Live Preview</a>
+        <button id="admin-logout" class="btn-outline">Logout</button>
+      </div>
+    </header>
+
+    <!-- Stats cards -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-value" id="stat-users">0</span>
+        <span class="stat-label">Participants</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-uploads">0</span>
+        <span class="stat-label">Total Uploads</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-photos">0</span>
+        <span class="stat-label">Photos</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-videos">0</span>
+        <span class="stat-label">Videos</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-messages">0</span>
+        <span class="stat-label">Chat Messages</span>
+      </div>
+    </section>
+
+    <!-- System monitor -->
+    <section class="panel">
+      <h2>🖥️ Server Resources</h2>
+      <div class="system-grid">
+        <div class="sys-card">
+          <div class="sys-label">CPU Usage</div>
+          <div class="sys-bar"><div class="sys-fill" id="cpu-bar"></div></div>
+          <div class="sys-value" id="cpu-text">0%</div>
+        </div>
+        <div class="sys-card">
+          <div class="sys-label">RAM Usage</div>
+          <div class="sys-bar"><div class="sys-fill" id="ram-bar"></div></div>
+          <div class="sys-value" id="ram-text">0%</div>
+        </div>
+        <div class="sys-card">
+          <div class="sys-label">Disk Usage</div>
+          <div class="sys-bar"><div class="sys-fill" id="disk-bar"></div></div>
+          <div class="sys-value" id="disk-text">0%</div>
+        </div>
+      </div>
+      <p class="sys-info" id="sys-info"></p>
+    </section>
+
+    <!-- Import participants -->
+    <section class="panel">
+      <h2>📥 Import Participants</h2>
+      <p class="panel-desc">Paste Markdown table (No Peserta | Name | Gender L/P)</p>
+      <textarea id="import-data" rows="6" placeholder="001 | John Doe | L
+002 | Jane Smith | P
+003 | Ahmad Rizki | L"></textarea>
+      <button id="import-btn" class="btn-primary">Import</button>
+      <p id="import-result" class="result-text"></p>
+    </section>
+
+    <!-- Add single participant -->
+    <section class="panel">
+      <h2>➕ Add Participant</h2>
+      <div class="form-row">
+        <input type="text" id="add-number" placeholder="No. Peserta">
+        <input type="text" id="add-name" placeholder="Full Name">
+        <select id="add-gender">
+          <option value="L">Male (L)</option>
+          <option value="P">Female (P)</option>
+        </select>
+        <button id="add-user-btn" class="btn-primary">Add</button>
+      </div>
+      <p id="add-result" class="result-text"></p>
+    </section>
+
+    <!-- Participant list -->
+    <section class="panel">
+      <h2>👥 Participant List</h2>
+      <div class="table-wrap">
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Name</th>
+              <th>Gender</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
+  <title>Live Moments — Projector View</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #waiting-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 24px;
+    }
+
+    #waiting-screen .camera-icon {
+      font-size: 80px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    #waiting-screen h1 {
+      font-size: 2.5rem;
+      font-weight: 300;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #e0e0e0;
+    }
+
+    #waiting-screen p {
+      font-size: 1.1rem;
+      color: #666;
+      letter-spacing: 2px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.1); opacity: 1; }
+    }
+
+    /* Slideshow layout */
+    #slideshow {
+      display: none;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .cinema-layout {
+      display: grid;
+      grid-template-columns: 1fr 2.5fr 1fr;
+      height: 100vh;
+      gap: 0;
+    }
+
+    .side-panel {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      opacity: 0.4;
+      transition: opacity 0.5s ease;
+    }
+
+    .side-panel img, .side-panel video {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .center-panel {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111;
+      overflow: hidden;
+    }
+
+    .center-panel img, .center-panel video {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      animation: fadeIn 0.8s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .center-info {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 30px 40px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .center-info .gender-badge {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .gender-badge.male { background: rgba(59,130,246,0.3); border: 2px solid #3b82f6; }
+    .gender-badge.female { background: rgba(236,72,153,0.3); border: 2px solid #ec4899; }
+
+    .center-info .info-text h2 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .center-info .info-text p {
+      font-size: 0.95rem;
+      color: #aaa;
+      margin-top: 4px;
+    }
+
+    .center-info .caption-text {
+      position: absolute;
+      top: -50px;
+      left: 40px;
+      right: 40px;
+      font-size: 1.3rem;
+      font-style: italic;
+      color: #ffd700;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    }
+
+    /* Progress bar */
+    .slide-progress {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #f59e0b, #ef4444);
+      transition: width linear;
+      z-index: 10;
+    }
+
+    /* Counter */
+    .slide-counter {
+      position: absolute;
+      top: 16px;
+      right: 24px;
+      font-size: 0.85rem;
+      color: #555;
+      letter-spacing: 2px;
+      z-index: 10;
+    }
+
+    .side-label {
+      position: absolute;
+      bottom: 12px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #444;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    /* New upload notification */
+    #new-upload-toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-100px);
+      background: rgba(245,158,11,0.9);
+      color: #000;
+      padding: 12px 32px;
+      border-radius: 30px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      z-index: 100;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      pointer-events: none;
+    }
+
+    #new-upload-toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div id="waiting-screen">
+    <div class="camera-icon">📷</div>
+    <h1>Live Moments</h1>
+    <p>Waiting for the first capture...</p>
+  </div>
+
+  <div id="slideshow">
+    <div class="slide-progress" id="slide-progress"></div>
+    <div class="slide-counter" id="slide-counter"></div>
+    <div class="cinema-layout">
+      <div class="side-panel" id="prev-panel">
+        <div id="prev-media"></div>
+        <div class="side-label">Previous</div>
+      </div>
+      <div class="center-panel" id="center-panel">
+        <div id="center-media"></div>
+        <div class="center-info" id="center-info">
+          <div class="gender-badge" id="center-gender"></div>
+          <div class="info-text">
+            <h2 id="center-name"></h2>
+            <p id="center-number"></p>
+          </div>
+        </div>
+        <div class="caption-text" id="center-caption"></div>
+      </div>
+      <div class="side-panel" id="next-panel">
+        <div id="next-media"></div>
+        <div class="side-label">Up Next</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="new-upload-toast">📸 New moment just captured!</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/live-preview.js"></script>
+</body>
+</html>
