@@ -7,10 +7,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="DisposableCam">
-  <link rel="apple-touch-icon" href="/images/icon.png">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="images/icon.png">
+  <link rel="manifest" href="manifest.json">
   <title>Disposable Camera</title>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <!-- Desktop redirect -->
@@ -22,7 +22,7 @@
       if (!isAdmin && !isLive && !isRecap) {
         const w = window.innerWidth;
         if (w >= 1024) {
-          window.location.href = '/live';
+          window.location.href = '/cam/live';
         }
       }
     })();
@@ -149,9 +149,9 @@
     </div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/app.js"></script>
-  <script src="/js/chat.js"></script>
+  <script src="socket.io/socket.io.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/chat.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/js/sw.js').catch(() => {});

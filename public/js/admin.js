@@ -57,7 +57,7 @@
 
     pinSubmit.disabled = true;
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await fetch('api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin })
@@ -100,7 +100,7 @@
 
   async function loadStats() {
     try {
-      const res = await fetch('/api/admin/stats');
+      const res = await fetch('api/admin/stats');
       const data = await res.json();
       statUsers.textContent = data.totalUsers;
       statUploads.textContent = data.totalUploads;
@@ -112,7 +112,7 @@
 
   async function loadSystem() {
     try {
-      const res = await fetch('/api/admin/system');
+      const res = await fetch('api/admin/system');
       const data = await res.json();
 
       cpuBar.style.width = data.cpu + '%';
@@ -154,7 +154,7 @@
     importBtn.textContent = 'Importing...';
 
     try {
-      const res = await fetch('/api/admin/import-participants', {
+      const res = await fetch('api/admin/import-participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data })
@@ -185,7 +185,7 @@
     if (!num || !name) { setResult(addResult, 'Fill in all fields', 'error'); return; }
 
     try {
-      const res = await fetch('/api/admin/users', {
+      const res = await fetch('api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ participantNumber: num, fullName: name, gender })
@@ -229,7 +229,7 @@
       usersTbody.querySelectorAll('.btn-ban').forEach(btn => {
         btn.addEventListener('click', async () => {
           try {
-            const res = await fetch(`/api/admin/users/${btn.dataset.id}/ban`, { method: 'PATCH' });
+            const res = await fetch(`api/admin/users/${btn.dataset.id}/ban`, { method: 'PATCH' });
             if (res.ok) loadUsers();
           } catch (err) { /* ignore */ }
         });
