@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Recap Album — Disposable Camera</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+
+    .recap-header {
+      text-align: center;
+      padding: 40px 20px 20px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+
+    .recap-header h1 {
+      font-size: 2rem;
+      font-weight: 300;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .recap-header p { color: #666; font-size: 0.9rem; }
+
+    .filter-bar {
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filter-bar select {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      border: 1px solid #333;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      min-width: 200px;
+    }
+
+    .recap-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 12px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .recap-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #111;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .recap-item:hover { transform: scale(1.02); }
+
+    .recap-item img, .recap-item video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .recap-item .item-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      font-size: 0.8rem;
+    }
+
+    .recap-item .item-overlay .item-name {
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .recap-item .item-overlay .item-caption {
+      color: #ffd700;
+      font-style: italic;
+      margin-top: 4px;
+    }
+
+    .recap-item .video-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.7);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+    }
+
+    .recap-empty {
+      text-align: center;
+      padding: 80px 20px;
+      color: #444;
+      font-size: 1.1rem;
+    }
+
+    .recap-count {
+      text-align: center;
+      padding: 10px;
+      color: #555;
+      font-size: 0.85rem;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.95);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal-overlay .modal-media {
+      max-width: 90vw;
+      max-height: 90vh;
+      object-fit: contain;
+    }
+
+    .modal-overlay .modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 2rem;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      .recap-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 8px;
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="recap-header">
+    <h1>📸 Full Album Recap</h1>
+    <p>All moments captured during the retreat</p>
+  </div>
+
+  <div class="filter-bar">
+    <select id="participant-filter">
+      <option value="">All Participants</option>
+    </select>
+  </div>
+
+  <div class="recap-count" id="recap-count"></div>
+  <div class="recap-grid" id="recap-grid"></div>
+  <div class="recap-empty hidden" id="recap-empty">No moments captured yet</div>
+
+  <div class="modal-overlay" id="modal-overlay">
+    <button class="modal-close" id="modal-close">✕</button>
+    <div id="modal-content"></div>
+  </div>
+
+  <script>
+    const grid = document.getElementById('recap-grid');
+    const empty = document.getElementById('recap-empty');
+    const countEl = document.getElementById('recap-count');
+    const filterSelect = document.getElementById('participant-filter');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalContent = document.getElementById('modal-content');
+    const modalClose = document.getElementById('modal-close');
+
+    async function loadRecap(participant) {
+      const url = participant ? `/api/recap?participant=${participant}` : '/api/recap';
+      const res = await fetch(url);
+      const data = await res.json();
+
+      // Populate filter
+      if (!participant && filterSelect.options.length <= 1) {
+        const pRes = await fetch('/api/participants');
+        const participants = await pRes.json();
+        participants.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.participantNumber;
+          opt.textContent = `${p.participantNumber} — ${p.fullName}`;
+          filterSelect.appendChild(opt);
+        });
+      }
+
+      grid.innerHTML = '';
+      if (data.photos.length === 0) {
+        empty.classList.remove('hidden');
+        countEl.textContent = '';
+        return;
+      }
+
+      empty.classList.add('hidden');
+      countEl.textContent = `${data.photos.length} moment${data.photos.length !== 1 ? 's' : ''}`;
+
+      data.photos.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'recap-item';
+
+        if (p.fileType === 'video') {
+          item.innerHTML = `
+            <video src="/uploads/${p.filename}" muted preload="metadata"></video>
+            <span class="video-badge">▶ Video</span>
+          `;
+        } else {
+          item.innerHTML = `<img src="/uploads/${p.filename}" alt="${p.fullName}" loading="lazy">`;
+        }
+
+        item.innerHTML += `
+          <div class="item-overlay">
+            <div class="item-name">${p.fullName} (#${p.participantNumber})</div>
+            ${p.caption ? `<div class="item-caption">"${p.caption}"</div>` : ''}
+          </div>
+        `;
+
+        item.addEventListener('click', () => openModal(p));
+        grid.appendChild(item);
+      });
+    }
+
+    function openModal(p) {
+      modalContent.innerHTML = '';
+      if (p.fileType === 'video') {
+        const v = document.createElement('video');
+        v.src = `/uploads/${p.filename}`;
+        v.controls = true;
+        v.autoplay = true;
+        v.className = 'modal-media';
+        modalContent.appendChild(v);
+      } else {
+        const img = document.createElement('img');
+        img.src = `/uploads/${p.filename}`;
+        img.className = 'modal-media';
+        modalContent.appendChild(img);
+      }
+      modalOverlay.classList.add('active');
+    }
+
+    modalClose.addEventListener('click', () => {
+      modalOverlay.classList.remove('active');
+      modalContent.innerHTML = '';
+    });
+
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.classList.remove('active');
+        modalContent.innerHTML = '';
+      }
+    });
+
+    filterSelect.addEventListener('change', () => loadRecap(filterSelect.value));
+
+    loadRecap('');
+  </script>
+</body>
+</html>
