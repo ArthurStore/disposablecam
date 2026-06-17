@@ -92,9 +92,9 @@ html, body {
   inset: 0;
   background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.5) 35%, rgba(0,0,0,0.85) 65%, rgba(0,0,0,0.97) 100%);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: calc(60px + var(--safe-top)) 24px calc(40px + var(--safe-bottom));
+  padding: calc(60px + var(--safe-top)) 24px calc(80px + var(--safe-bottom));
 }
 
 .welcome-content {
@@ -121,10 +121,11 @@ html, body {
 }
 
 .welcome-content h1 {
-  font-family: 'Instrument Serif', Georgia, serif;
-  font-size: clamp(2.1rem, 8vw, 2.8rem);
-  font-weight: 400;
-  line-height: 1.05;
+  font-family: 'Montserrat', 'Poppins', sans-serif;
+  font-size: clamp(1.8rem, 7vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
   margin-bottom: 8px;
   text-shadow: 0 2px 20px rgba(0,0,0,0.5);
 }
@@ -298,7 +299,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px 6px 6px;
+  padding: 6px 8px 6px 6px;
   background: rgba(0, 0, 0, 0.45);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
@@ -319,17 +320,18 @@ html, body {
 .profile-text h1 { font-size: 0.82rem; font-weight: 600; line-height: 1.2; }
 .profile-text span { font-size: 0.68rem; color: rgba(255,255,255,0.55); }
 
-.vf-icon-btn {
-  width: 38px; height: 38px;
+.profile-logout-btn {
+  width: 28px; height: 28px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: rgba(255, 77, 94, 0.15);
+  border: 1px solid rgba(255, 77, 94, 0.25);
+  color: var(--danger);
   display: grid; place-items: center;
   cursor: pointer;
+  margin-left: 4px;
+  transition: background 0.2s ease, transform 0.15s ease;
 }
+.profile-logout-btn:active { transform: scale(0.9); background: rgba(255, 77, 94, 0.3); }
 
 /* Flash — top-right isolated */
 .vf-flash-btn {
@@ -1092,6 +1094,88 @@ html, body {
 @media (min-width: 1024px) {
   #app { max-width: 430px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .chat-fab { right: calc(50% - 215px + 16px); }
+}
+
+/* ═══ Landscape Orientation ═══ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .vf-top {
+    padding: 8px 14px;
+  }
+  .profile-chip {
+    padding: 4px 8px 4px 4px;
+    gap: 6px;
+  }
+  .gender-icon {
+    width: 24px; height: 24px;
+  }
+  .gender-icon img { width: 14px; height: 14px; }
+  .profile-text h1 { font-size: 0.7rem; }
+  .profile-text span { font-size: 0.6rem; }
+  .profile-logout-btn {
+    width: 22px; height: 22px;
+  }
+  .profile-logout-btn svg { width: 12px; height: 12px; }
+
+  .vf-flash-btn {
+    top: 8px;
+    width: 36px; height: 36px;
+  }
+  .vf-flash-btn svg { width: 18px; height: 18px; }
+
+  #recording-indicator {
+    top: 8px;
+    padding: 4px 10px;
+    font-size: 0.65rem;
+  }
+
+  .vf-bottom {
+    padding: 10px 16px 12px;
+    grid-template-columns: 48px 1fr 48px;
+  }
+  .gallery-thumb-btn {
+    width: 44px; height: 44px;
+  }
+  .capture-btn {
+    width: 62px; height: 62px;
+  }
+  .video-mode-btn {
+    width: 36px; height: 36px;
+  }
+  .video-mode-btn svg { width: 18px; height: 18px; }
+  .zoom-pill {
+    padding: 3px 10px;
+    font-size: 0.7rem;
+  }
+  .vf-side-btn svg { width: 18px; height: 18px; }
+  .vf-side-btn span { font-size: 0.55rem; }
+
+  .chat-fab {
+    width: 42px; height: 42px;
+    bottom: 16px;
+  }
+
+  .welcome-content {
+    padding: 20px 24px 18px;
+  }
+  .welcome-content h1 {
+    font-size: clamp(1.4rem, 5vw, 1.8rem);
+  }
+  .welcome-eyebrow {
+    font-size: 0.6rem;
+    margin-bottom: 6px;
+  }
+  .welcome-subtitle {
+    font-size: 0.75rem;
+    margin-bottom: 16px;
+  }
+  .welcome-form input {
+    padding: 12px 14px;
+    font-size: 0.85rem;
+  }
+  .btn-primary {
+    padding: 12px 14px;
+    font-size: 0.85rem;
+  }
 }
 
 /* ─── DM select dropdown ─── */

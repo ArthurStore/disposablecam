@@ -139,12 +139,34 @@
         ? nameParts[0] + ' ' + nameParts[nameParts.length - 1].charAt(0) + '.'
         : nameParts[0] || '';
 
+      const mediaEl = document.createElement(p.fileType === 'video' ? 'video' : 'img');
+      mediaEl.src = url('uploads/' + p.filename);
       if (p.fileType === 'video') {
-        item.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video><span class="video-tag">&#9654;</span>`;
+        mediaEl.muted = true;
+        mediaEl.preload = 'metadata';
       } else {
-        item.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="${escapeHtml(p.fullName || '')}" loading="lazy">`;
+        mediaEl.loading = 'lazy';
       }
-      item.innerHTML += `<span class="name-tag">${escapeHtml(tag)}</span>`;
+
+      mediaEl.onload = mediaEl.onloadedmetadata = function() {
+        const w = this.naturalWidth || this.videoWidth;
+        const h = this.naturalHeight || this.videoHeight;
+        if (w && h && w > h) {
+          item.classList.add('landscape');
+        }
+      };
+
+      item.appendChild(mediaEl);
+      if (p.fileType === 'video') {
+        const videoTag = document.createElement('span');
+        videoTag.className = 'video-tag';
+        videoTag.innerHTML = '&#9654;';
+        item.appendChild(videoTag);
+      }
+      const nameTag = document.createElement('span');
+      nameTag.className = 'name-tag';
+      nameTag.textContent = tag;
+      item.appendChild(nameTag);
       item.addEventListener('click', () => openModal(p));
       grid.appendChild(item);
     });

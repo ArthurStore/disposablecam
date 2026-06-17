@@ -75,6 +75,7 @@
     el.className = 'masonry-tile ' + (idx % 3 === 0 ? 'tall' : 'short') + (idx === currentIndex ? ' active' : '');
     el.dataset.index = idx;
 
+    let mediaEl;
     if (item.fileType === 'video') {
       const vid = document.createElement('video');
       vid.src = url('uploads/' + item.filename);
@@ -84,12 +85,22 @@
       vid.autoplay = true;
       vid.preload = 'metadata';
       el.appendChild(vid);
+      mediaEl = vid;
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + item.filename);
       img.loading = 'lazy';
       el.appendChild(img);
+      mediaEl = img;
     }
+
+    mediaEl.onload = mediaEl.onloadedmetadata = function() {
+      const w = this.naturalWidth || this.videoWidth;
+      const h = this.naturalHeight || this.videoHeight;
+      if (w && h && w > h) {
+        el.classList.add('landscape');
+      }
+    };
 
     const name = document.createElement('span');
     name.className = 'tile-name';

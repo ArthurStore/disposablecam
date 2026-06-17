@@ -1,4 +1,4 @@
-const CACHE_NAME = 'disposable-cam-v5';
+const CACHE_NAME = 'disposable-cam-v6';
 const SHELL_ASSETS = [
   './',
   'css/style.css',

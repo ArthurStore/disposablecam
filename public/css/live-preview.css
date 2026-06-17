@@ -31,10 +31,10 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 #waiting-screen h1 {
-  font-family: 'Instrument Serif', Georgia, serif;
+  font-family: 'Montserrat', 'Poppins', sans-serif;
   font-size: 1.8rem;
-  font-weight: 400;
-  letter-spacing: 0.04em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 #waiting-screen p { color: rgba(255,255,255,0.4); font-size: 0.85rem; }
 
@@ -53,9 +53,10 @@ body {
   flex-shrink: 0;
 }
 .live-header h1 {
-  font-family: 'Instrument Serif', Georgia, serif;
+  font-family: 'Montserrat', 'Poppins', sans-serif;
   font-size: 1.2rem;
-  font-weight: 400;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 #upload-count { font-size: 0.75rem; color: rgba(255,255,255,0.45); }
 #live-clock { margin-left: auto; font-size: 0.78rem; color: rgba(255,255,255,0.4); }
@@ -198,4 +199,34 @@ body {
   .masonry-dashboard { grid-template-columns: 1fr; grid-template-rows: 120px 1fr 120px; }
   .masonry-col { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
   .masonry-tile { width: 90px; flex-shrink: 0; aspect-ratio: 3 / 4 !important; }
+}
+
+/* Landscape orientation adjustments */
+@media (orientation: landscape) and (max-height: 500px) {
+  .live-header {
+    padding: 8px 16px;
+  }
+  .live-header h1 {
+    font-size: 1rem;
+  }
+  #upload-count, #live-clock {
+    font-size: 0.7rem;
+  }
+  .masonry-dashboard {
+    grid-template-columns: 1fr 1.6fr 1fr;
+    gap: 4px;
+    padding: 4px;
+  }
+  .spotlight {
+    max-width: 320px;
+    max-height: calc(100vh - 60px);
+    border-radius: 12px;
+  }
+  .masonry-tile.tall { aspect-ratio: 3 / 4; }
+  .masonry-tile.short { aspect-ratio: 3 / 4; }
+}
+
+/* Landscape photo tiles get wider aspect */
+.masonry-tile.landscape {
+  aspect-ratio: 4 / 3 !important;
 }
