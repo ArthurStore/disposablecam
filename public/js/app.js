@@ -48,11 +48,14 @@
   const rotateBtn = document.getElementById('rotate-btn');
   const flashBtn = document.getElementById('flash-btn');
   const modeToggleBtn = document.getElementById('mode-toggle-btn');
-  const modeIndicator = document.getElementById('mode-indicator');
   const recordingIndicator = document.getElementById('recording-indicator');
   const recTimer = document.getElementById('rec-timer');
   const zoomIndicator = document.getElementById('zoom-indicator');
   const galleryBtn = document.getElementById('gallery-btn');
+  const galleryThumb = document.getElementById('gallery-thumb');
+  const welcomeCover = document.getElementById('welcome-cover');
+  const welcomeEventName = document.getElementById('welcome-event-name');
+  const welcomeEventSubtitle = document.getElementById('welcome-event-subtitle');
   const galleryModal = document.getElementById('gallery-modal');
   const galleryModalClose = document.getElementById('gallery-modal-close');
   const galleryGrid = document.getElementById('gallery-grid');
@@ -161,8 +164,59 @@
 
   window.showMicroToast = showMicroToast;
 
+  async function loadEventConfig() {
+    try {
+      const res = await fetch(api('event-config'));
+      if (!res.ok) return;
+      const cfg = await res.json();
+      if (welcomeEventName) welcomeEventName.textContent = cfg.eventName || 'The Moments';
+      if (welcomeEventSubtitle) welcomeEventSubtitle.textContent = cfg.eventSubtitle || 'Retreat Event';
+      if (welcomeCover && cfg.coverImage) {
+        welcomeCover.style.backgroundImage = `url('${url('uploads/' + cfg.coverImage)}')`;
+      }
+    } catch (e) {}
+  }
+
+  function updateGalleryThumbnail(photos) {
+    if (!galleryThumb) return;
+    const latest = photos && photos.find((p) => p.fileType === 'photo');
+    if (latest) {
+      galleryThumb.classList.add('has-photo');
+      galleryThumb.style.backgroundImage = `url('${url('uploads/' + latest.filename)}')`;
+    } else {
+      galleryThumb.classList.remove('has-photo');
+      galleryThumb.style.backgroundImage = '';
+    }
+  }
+
+  async function refreshGalleryThumb() {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(api('gallery/' + encodeURIComponent(currentUser.participantNumber)));
+      if (res.ok) updateGalleryThumbnail(await res.json());
+    } catch (e) {}
+  }
+
+  window.fetchUserGallery = async function () {
+    if (!currentUser) return [];
+    const res = await fetch(api('gallery/' + encodeURIComponent(currentUser.participantNumber)));
+    if (!res.ok) throw new Error('Gallery unavailable');
+    return res.json();
+  };
+
+  function downloadMedia(p) {
+    const a = document.createElement('a');
+    a.href = url('uploads/' + p.filename);
+    a.download = p.originalName || p.filename;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   // ═══ Registration ═══
   function checkSession() {
+    loadEventConfig();
     const saved = localStorage.getItem('dc_user');
     if (saved) {
       try {
@@ -216,6 +270,7 @@
     initCamera();
     setupZoomGestures();
     listenForRevocation();
+    refreshGalleryThumb();
     if (typeof initChat === 'function') initChat(currentUser);
   }
 
@@ -286,12 +341,9 @@
     const modes = ['off', 'on', 'auto'];
     flashMode = modes[(modes.indexOf(flashMode) + 1) % modes.length];
     flashBtn.dataset.mode = flashMode;
-    flashBtn.querySelector('.flash-label').textContent =
-      flashMode.charAt(0).toUpperCase() + flashMode.slice(1);
     flashBtn.querySelector('.flash-off').classList.toggle('hidden', flashMode === 'on');
     flashBtn.querySelector('.flash-on').classList.toggle('hidden', flashMode !== 'on');
-    if (flashMode === 'on') applyFlash();
-    else if (flashMode === 'off') applyFlash();
+    if (flashMode === 'on' || flashMode === 'off') applyFlash();
   });
 
   rotateBtn.addEventListener('click', () => {
@@ -304,7 +356,8 @@
   modeToggleBtn.addEventListener('click', () => {
     vibrate(30);
     isVideoMode = !isVideoMode;
-    modeIndicator.textContent = isVideoMode ? 'Video' : 'Photo';
+    modeToggleBtn.classList.toggle('active', isVideoMode);
+    modeToggleBtn.setAttribute('aria-pressed', String(isVideoMode));
     captureBtn.classList.toggle('video-mode', isVideoMode);
     if (!isVideoMode && isRecording) stopRecording();
     initCamera();
@@ -387,7 +440,8 @@
     if (isVideoMode) return;
     longPressTimer = setTimeout(() => {
       isVideoMode = true;
-      modeIndicator.textContent = 'Video';
+      modeToggleBtn.classList.add('active');
+      modeToggleBtn.setAttribute('aria-pressed', 'true');
       captureBtn.classList.add('video-mode');
       initCamera().then(() => startRecording());
     }, 800);
@@ -406,7 +460,8 @@
         setTimeout(() => {
           flashMode = 'off';
           flashBtn.dataset.mode = 'off';
-          flashBtn.querySelector('.flash-label').textContent = 'Off';
+          flashBtn.querySelector('.flash-off').classList.remove('hidden');
+          flashBtn.querySelector('.flash-on').classList.add('hidden');
           applyFlash();
         }, 300);
       }
@@ -551,26 +606,38 @@
     formData.append('caption', caption || '');
     formData.append('captionPosition', capPos || 'bottom');
 
+    const isVideo = mimetype && mimetype.startsWith('video');
+    const controller = new AbortController();
+    const timeoutMs = isVideo ? 120000 : 60000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       progressFill.style.width = '60%';
-      const res = await fetch(api('upload'), { method: 'POST', body: formData });
+      const res = await fetch(api('upload'), {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
       progressFill.style.width = '90%';
       const data = await res.json();
 
       if (res.ok) {
         vibrate([50, 30, 50]);
         progressFill.style.width = '100%';
+        refreshGalleryThumb();
         setTimeout(() => {
           uploadProgress.classList.add('hidden');
           progressFill.style.width = '0';
         }, 800);
       } else {
-        showMicroToast(data.error || 'Upload failed');
+        showMicroToast(data.error || (isVideo ? 'Video upload failed, please check your network connection' : 'Upload failed'));
         uploadProgress.classList.add('hidden');
         progressFill.style.width = '0';
       }
     } catch (err) {
-      showMicroToast('Upload failed — check your connection');
+      clearTimeout(timeoutId);
+      showMicroToast(isVideo ? 'Video upload failed, please check your network connection' : 'Upload failed — check your connection');
       uploadProgress.classList.add('hidden');
       progressFill.style.width = '0';
     }
@@ -578,6 +645,7 @@
 
   // ═══ Gallery Modal ═══
   const TRASH_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
+  const DOWNLOAD_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
   galleryBtn.addEventListener('click', () => {
     vibrate(20);
@@ -602,9 +670,11 @@
 
       if (!photos.length) {
         galleryEmpty.classList.remove('hidden');
+        updateGalleryThumbnail([]);
         return;
       }
       galleryEmpty.classList.add('hidden');
+      updateGalleryThumbnail(photos);
 
       photos.forEach((p) => {
         const item = document.createElement('div');
@@ -620,11 +690,16 @@
           item.innerHTML += `<span class="item-caption">${escapeHtml(p.caption)}</span>`;
         }
 
-        item.innerHTML += `<button class="delete-btn" data-id="${p._id}" title="Delete">${TRASH_SVG}</button>`;
+        item.innerHTML += `<div class="item-actions"><button class="download-btn" title="Download">${DOWNLOAD_SVG}</button><button class="delete-btn" data-id="${p._id}" title="Delete">${TRASH_SVG}</button></div>`;
 
         item.addEventListener('click', (e) => {
-          if (e.target.closest('.delete-btn')) return;
+          if (e.target.closest('.delete-btn') || e.target.closest('.download-btn')) return;
           openMediaModal(p);
+        });
+
+        item.querySelector('.download-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          downloadMedia(p);
         });
 
         item.querySelector('.delete-btn').addEventListener('click', (e) => {
@@ -660,6 +735,11 @@
       img.src = url('uploads/' + p.filename);
       mediaModalBody.appendChild(img);
     }
+    const actions = document.createElement('div');
+    actions.className = 'media-modal-actions';
+    actions.innerHTML = `<button class="media-download-btn">Download</button>`;
+    actions.querySelector('.media-download-btn').addEventListener('click', () => downloadMedia(p));
+    mediaModalBody.appendChild(actions);
     mediaModal.classList.remove('hidden');
   }
 

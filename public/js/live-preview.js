@@ -1,8 +1,4 @@
-/* ═══════════════════════════════════════
-   Disposable Camera — Live Preview
-   Instagram Story grid + spotlight rotation
-   (subdir-safe relative paths)
-   ═══════════════════════════════════════ */
+/* Live Preview — 3-column masonry + center spotlight */
 
 /* globals io */
 
@@ -18,7 +14,7 @@
 
   const socket = io({ path: BASE + 'socket.io' });
   const SLIDE_DURATION = 8000;
-  const VIDEO_MAX_DURATION = 30000;
+  const VIDEO_MAX_DURATION = 45000;
 
   let uploads = [];
   let currentIndex = 0;
@@ -28,19 +24,18 @@
   const liveApp = document.getElementById('live-app');
   const uploadCount = document.getElementById('upload-count');
   const liveClock = document.getElementById('live-clock');
+  const colLeft = document.getElementById('col-left');
+  const colRight = document.getElementById('col-right');
   const spotlightMedia = document.getElementById('spotlight-media');
   const spotlightCaption = document.getElementById('spotlight-caption');
-  const spotlightAvatar = document.getElementById('spotlight-avatar');
   const spotlightName = document.getElementById('spotlight-name');
   const spotlightNumber = document.getElementById('spotlight-number');
   const spotlightBar = document.getElementById('spotlight-bar');
-  const storyGrid = document.getElementById('story-grid');
   const microToast = document.getElementById('micro-toast');
 
   function startClock() {
     function tick() {
-      const d = new Date();
-      liveClock.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      liveClock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     tick();
     setInterval(tick, 30000);
@@ -51,11 +46,10 @@
       const res = await fetch(api('all-uploads'));
       uploads = await res.json();
       uploads.reverse();
-
       if (uploads.length > 0) {
         waitingScreen.classList.add('hidden');
         liveApp.classList.remove('hidden');
-        renderGrid();
+        renderColumns();
         showSlide(0);
         startClock();
       }
@@ -64,54 +58,63 @@
     }
   }
 
-  function renderGrid() {
-    storyGrid.innerHTML = '';
+  function renderColumns() {
+    colLeft.innerHTML = '';
+    colRight.innerHTML = '';
     uploadCount.textContent = `${uploads.length} moment${uploads.length !== 1 ? 's' : ''}`;
 
     uploads.forEach((item, idx) => {
-      const el = document.createElement('div');
-      el.className = 'grid-item' + (idx === currentIndex ? ' active' : '');
-      el.dataset.index = idx;
-
-      if (item.fileType === 'video') {
-        el.innerHTML = `
-          <video src="${url('uploads/' + item.filename)}" muted preload="metadata"></video>
-          <span class="grid-video-badge">▶</span>
-          <span class="grid-user">${escapeHtml(item.fullName)}</span>
-        `;
-      } else {
-        el.innerHTML = `
-          <img src="${url('uploads/' + item.filename)}" alt="" loading="lazy">
-          <span class="grid-user">${escapeHtml(item.fullName)}</span>
-        `;
-      }
-
-      el.addEventListener('click', () => {
-        clearTimeout(slideTimer);
-        showSlide(idx);
-      });
-
-      storyGrid.appendChild(el);
+      const tile = createTile(item, idx);
+      if (idx % 2 === 0) colLeft.appendChild(tile);
+      else colRight.appendChild(tile);
     });
-
-    scrollActiveIntoView();
   }
 
-  function scrollActiveIntoView() {
-    const active = storyGrid.querySelector('.grid-item.active');
-    if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  function createTile(item, idx) {
+    const el = document.createElement('div');
+    el.className = 'masonry-tile ' + (idx % 3 === 0 ? 'tall' : 'short') + (idx === currentIndex ? ' active' : '');
+    el.dataset.index = idx;
+
+    if (item.fileType === 'video') {
+      const vid = document.createElement('video');
+      vid.src = url('uploads/' + item.filename);
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.loop = true;
+      vid.autoplay = true;
+      vid.preload = 'metadata';
+      el.appendChild(vid);
+    } else {
+      const img = document.createElement('img');
+      img.src = url('uploads/' + item.filename);
+      img.loading = 'lazy';
+      el.appendChild(img);
+    }
+
+    const name = document.createElement('span');
+    name.className = 'tile-name';
+    name.textContent = (item.fullName || '').split(' ')[0].toUpperCase();
+    el.appendChild(name);
+
+    el.addEventListener('click', () => {
+      clearTimeout(slideTimer);
+      showSlide(idx);
+    });
+
+    return el;
+  }
+
+  function updateActiveTiles() {
+    document.querySelectorAll('.masonry-tile').forEach((el) => {
+      el.classList.toggle('active', parseInt(el.dataset.index, 10) === currentIndex);
+    });
   }
 
   function showSlide(index) {
-    if (uploads.length === 0) return;
-
+    if (!uploads.length) return;
     currentIndex = index % uploads.length;
     const current = uploads[currentIndex];
-
-    storyGrid.querySelectorAll('.grid-item').forEach((el, i) => {
-      el.classList.toggle('active', i === currentIndex);
-    });
-    scrollActiveIntoView();
+    updateActiveTiles();
 
     spotlightMedia.innerHTML = '';
     clearTimeout(slideTimer);
@@ -122,6 +125,7 @@
       vid.autoplay = true;
       vid.muted = false;
       vid.playsInline = true;
+      vid.loop = false;
       vid.onended = () => advanceSlide();
       spotlightMedia.appendChild(vid);
       slideTimer = setTimeout(advanceSlide, VIDEO_MAX_DURATION);
@@ -131,7 +135,6 @@
       const img = document.createElement('img');
       img.src = url('uploads/' + current.filename);
       spotlightMedia.appendChild(img);
-
       spotlightBar.style.transition = 'none';
       spotlightBar.style.width = '0%';
       requestAnimationFrame(() => {
@@ -141,9 +144,6 @@
       slideTimer = setTimeout(advanceSlide, SLIDE_DURATION);
     }
 
-    const isMale = current.gender === 'L';
-    spotlightAvatar.className = `spotlight-avatar ${isMale ? 'male' : 'female'}`;
-    spotlightAvatar.textContent = isMale ? '♂' : '♀';
     spotlightName.textContent = current.fullName;
     spotlightNumber.textContent = `#${current.participantNumber}`;
 
@@ -164,40 +164,37 @@
   socket.on('new-upload', (data) => {
     uploads.push(data);
     uploadCount.textContent = `${uploads.length} moment${uploads.length !== 1 ? 's' : ''}`;
-
     if (uploads.length === 1) {
       waitingScreen.classList.add('hidden');
       liveApp.classList.remove('hidden');
       startClock();
-      renderGrid();
+      renderColumns();
       showSlide(0);
     } else {
-      renderGrid();
+      renderColumns();
     }
-
-    showMicroToast('New moment captured');
+    showMicroToast('New moment');
   });
 
   socket.on('media-deleted', (data) => {
-    const idx = uploads.findIndex(u => u._id === data.id);
-    if (idx !== -1) {
-      uploads.splice(idx, 1);
-      if (uploads.length === 0) {
-        waitingScreen.classList.remove('hidden');
-        liveApp.classList.add('hidden');
-        clearTimeout(slideTimer);
-      } else {
-        renderGrid();
-        if (currentIndex >= uploads.length) showSlide(0);
-        else showSlide(currentIndex);
-      }
+    const idx = uploads.findIndex((u) => u._id === data.id);
+    if (idx === -1) return;
+    uploads.splice(idx, 1);
+    if (!uploads.length) {
+      waitingScreen.classList.remove('hidden');
+      liveApp.classList.add('hidden');
+      clearTimeout(slideTimer);
+    } else {
+      renderColumns();
+      if (currentIndex >= uploads.length) showSlide(0);
+      else showSlide(currentIndex);
     }
   });
 
   function showMicroToast(msg) {
     microToast.textContent = msg;
     microToast.classList.add('show');
-    setTimeout(() => microToast.classList.remove('show'), 2500);
+    setTimeout(() => microToast.classList.remove('show'), 2200);
   }
 
   document.addEventListener('keydown', (e) => {
@@ -207,12 +204,6 @@
       showSlide(currentIndex - 1 + uploads.length);
     }
   });
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
 
   loadUploads();
 })();

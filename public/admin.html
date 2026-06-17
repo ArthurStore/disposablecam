@@ -5,6 +5,9 @@
   <base href="./">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700&display=swap" rel="stylesheet">
   <title>Admin Dashboard — Disposable Camera</title>
   <link rel="stylesheet" href="css/admin.css">
 </head>
@@ -12,7 +15,9 @@
   <!-- PIN Login -->
   <div id="login-screen">
     <div class="login-card">
-      <div class="login-icon">🔐</div>
+      <div class="login-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
       <h1>Admin Dashboard</h1>
       <p>Enter admin PIN to continue</p>
       <input type="password" id="pin-input" placeholder="PIN" maxlength="10" autocomplete="off">
@@ -24,10 +29,10 @@
   <!-- Dashboard -->
   <div id="dashboard" class="hidden">
     <header class="admin-header">
-      <h1>📷 Disposable Camera — Admin</h1>
+      <h1>Disposable Camera — Admin</h1>
       <div class="header-actions">
-        <a href="recap" target="_blank" class="btn-link">📸 Recap Album</a>
-        <a href="live" target="_blank" class="btn-link">🖥️ Live Preview</a>
+        <a href="recap" id="recap-link" target="_blank" class="btn-link">Recap Album</a>
+        <a href="live" target="_blank" class="btn-link">Live Preview</a>
         <button id="admin-logout" class="btn-outline">Logout</button>
       </div>
     </header>
@@ -56,9 +61,33 @@
       </div>
     </section>
 
+    <!-- Event configuration -->
+    <section class="panel">
+      <h2>Event Configuration</h2>
+      <p class="panel-desc">Customize welcome screen, recap album URL, and event details</p>
+      <div class="event-form">
+        <label>Event Name<input type="text" id="evt-name" placeholder="Capture Moment Retret Teens X CS"></label>
+        <label>Event Subtitle<input type="text" id="evt-subtitle" placeholder="Retreat: For A Reason 2026"></label>
+        <label>Recap URL Slug<input type="text" id="evt-slug" placeholder="moments"></label>
+        <div class="form-row compact">
+          <label>Event Days<input type="number" id="evt-days" min="1" value="1"></label>
+          <label>Start Date<input type="date" id="evt-start"></label>
+          <label>End Date<input type="date" id="evt-end"></label>
+        </div>
+        <div class="cover-upload">
+          <span>Welcome / Recap Cover</span>
+          <input type="file" id="evt-cover-file" accept="image/*">
+          <div id="evt-cover-preview" class="cover-preview"></div>
+        </div>
+        <button id="evt-save-btn" class="btn-primary">Save Event Settings</button>
+        <p id="evt-result" class="result-text"></p>
+        <p class="panel-desc" id="recap-url-hint"></p>
+      </div>
+    </section>
+
     <!-- System monitor -->
     <section class="panel">
-      <h2>🖥️ Server Resources</h2>
+      <h2>Server Resources</h2>
       <div class="system-grid">
         <div class="sys-card">
           <div class="sys-label">CPU Usage</div>
@@ -81,7 +110,7 @@
 
     <!-- Import participants -->
     <section class="panel">
-      <h2>📥 Import Participants</h2>
+      <h2>Import Participants</h2>
       <p class="panel-desc">Paste Markdown table (No Peserta | Name | Gender L/P)</p>
       <textarea id="import-data" rows="6" placeholder="001 | John Doe | L
 002 | Jane Smith | P
@@ -92,7 +121,7 @@
 
     <!-- Add single participant -->
     <section class="panel">
-      <h2>➕ Add Participant</h2>
+      <h2>Add Participant</h2>
       <div class="form-row">
         <input type="text" id="add-number" placeholder="No. Peserta">
         <input type="text" id="add-name" placeholder="Full Name">
@@ -107,7 +136,7 @@
 
     <!-- Participant list -->
     <section class="panel">
-      <h2>👥 Participant List</h2>
+      <h2>Participant List</h2>
       <div class="table-wrap">
         <table id="users-table">
           <thead>
@@ -126,14 +155,14 @@
 
     <!-- Live Chat Monitor -->
     <section class="panel chat-monitor-panel">
-      <h2>💬 Live Chat Monitor</h2>
+      <h2>Live Chat Monitor</h2>
       <p class="panel-desc">Public messages stream in real time</p>
       <div id="admin-chat-feed" class="admin-chat-feed"></div>
     </section>
 
     <!-- Private Messages Monitor -->
     <section class="panel chat-monitor-panel">
-      <h2>🔒 Private Messages Monitor</h2>
+      <h2>Private Messages Monitor</h2>
       <p class="panel-desc">All direct conversations — admin visibility</p>
       <div id="admin-private-feed" class="admin-chat-feed private-feed"></div>
     </section>

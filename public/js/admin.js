@@ -53,6 +53,19 @@
   const adminChatFeed = document.getElementById('admin-chat-feed');
   const adminPrivateFeed = document.getElementById('admin-private-feed');
 
+  const evtName = document.getElementById('evt-name');
+  const evtSubtitle = document.getElementById('evt-subtitle');
+  const evtSlug = document.getElementById('evt-slug');
+  const evtDays = document.getElementById('evt-days');
+  const evtStart = document.getElementById('evt-start');
+  const evtEnd = document.getElementById('evt-end');
+  const evtCoverFile = document.getElementById('evt-cover-file');
+  const evtCoverPreview = document.getElementById('evt-cover-preview');
+  const evtSaveBtn = document.getElementById('evt-save-btn');
+  const evtResult = document.getElementById('evt-result');
+  const recapUrlHint = document.getElementById('recap-url-hint');
+  const recapLink = document.getElementById('recap-link');
+
   pinSubmit.addEventListener('click', doLogin);
   pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 
@@ -92,12 +105,71 @@
     loadStats();
     loadSystem();
     loadUsers();
+    loadEventConfig();
     loadChatMonitor();
     loadPrivateMonitor();
     initAdminSocket();
     setInterval(loadStats, 10000);
     setInterval(loadSystem, 5000);
   }
+
+  async function loadEventConfig() {
+    try {
+      const res = await fetch(api('admin/event-config'));
+      const cfg = await res.json();
+      evtName.value = cfg.eventName || '';
+      evtSubtitle.value = cfg.eventSubtitle || '';
+      evtSlug.value = cfg.recapSlug || 'moments';
+      evtDays.value = cfg.eventDays || 1;
+      if (cfg.eventStartDate) evtStart.value = cfg.eventStartDate.slice(0, 10);
+      if (cfg.eventEndDate) evtEnd.value = cfg.eventEndDate.slice(0, 10);
+      if (cfg.coverImage) {
+        evtCoverPreview.style.backgroundImage = `url('${url('uploads/' + cfg.coverImage)}')`;
+      }
+      const slug = cfg.recapSlug || 'moments';
+      recapLink.href = 'recap/' + slug;
+      recapUrlHint.textContent = `Recap album URL: …/recap/${slug}`;
+    } catch (err) {}
+  }
+
+  evtSaveBtn.addEventListener('click', async () => {
+    evtSaveBtn.disabled = true;
+    try {
+      const res = await fetch(api('admin/event-config'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventName: evtName.value,
+          eventSubtitle: evtSubtitle.value,
+          recapSlug: evtSlug.value,
+          eventDays: parseInt(evtDays.value, 10),
+          eventStartDate: evtStart.value,
+          eventEndDate: evtEnd.value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult(evtResult, data.error || 'Save failed', 'error');
+        return;
+      }
+      if (evtCoverFile.files[0]) {
+        const fd = new FormData();
+        fd.append('cover', evtCoverFile.files[0]);
+        const coverRes = await fetch(api('admin/event-cover'), { method: 'POST', body: fd });
+        const coverData = await coverRes.json();
+        if (coverRes.ok && coverData.coverImage) {
+          evtCoverPreview.style.backgroundImage = `url('${url('uploads/' + coverData.coverImage)}')`;
+        }
+        evtCoverFile.value = '';
+      }
+      setResult(evtResult, 'Event settings saved', 'success');
+      loadEventConfig();
+    } catch (err) {
+      setResult(evtResult, 'Connection error', 'error');
+    } finally {
+      evtSaveBtn.disabled = false;
+    }
+  });
 
   function initAdminSocket() {
     if (typeof io === 'undefined') return;

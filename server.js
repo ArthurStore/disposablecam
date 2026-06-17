@@ -12,6 +12,7 @@ const User = require('./models/User');
 const Photo = require('./models/Photo');
 const Message = require('./models/Message');
 const PrivateMessage = require('./models/PrivateMessage');
+const EventSettings = require('./models/EventSettings');
 const AdminPin = require('./models/AdminPin');
 const bcrypt = require('bcryptjs');
 
@@ -57,12 +58,38 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: (parseInt(process.env.UPLOAD_MAX_SIZE) || 50) * 1024 * 1024 },
+  limits: { fileSize: (parseInt(process.env.UPLOAD_MAX_SIZE) || 100) * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) cb(null, true);
-    else cb(new Error('Only image and video files are allowed'), false);
+    const mime = file.mimetype || '';
+    if (mime.startsWith('image/') || mime.startsWith('video/') ||
+        mime === 'application/octet-stream' || mime === 'video/webm' || mime === 'video/mp4') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image and video files are allowed'), false);
+    }
   }
 });
+
+function handleUpload(fieldName) {
+  return (req, res, next) => {
+    upload.single(fieldName)(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        const msg = err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : err.message;
+        return res.status(400).json({ error: msg });
+      }
+      if (err) return res.status(400).json({ error: err.message });
+      next();
+    });
+  };
+}
+
+async function getEventSettings() {
+  let settings = await EventSettings.findOne();
+  if (!settings) {
+    settings = await EventSettings.create({});
+  }
+  return settings;
+}
 
 // ─── Initialize admin PIN ───
 async function initAdminPin() {
@@ -74,6 +101,15 @@ async function initAdminPin() {
   }
 }
 initAdminPin();
+initEventSettings();
+
+async function initEventSettings() {
+  const count = await EventSettings.countDocuments();
+  if (count === 0) {
+    await EventSettings.create({});
+    console.log('Event settings initialized');
+  }
+}
 
 // ═══════════════════════════════════════
 //  API ROUTES
@@ -96,7 +132,7 @@ router.post('/api/validate', async (req, res) => {
   }
 });
 
-router.post('/api/upload', upload.single('media'), async (req, res) => {
+router.post('/api/upload', handleUpload('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const { participantNumber, fullName, gender, caption, captionPosition } = req.body;
@@ -104,7 +140,8 @@ router.post('/api/upload', upload.single('media'), async (req, res) => {
     if (!user) return res.status(404).json({ error: 'Participant not found' });
     if (user.isBanned) return res.status(403).json({ error: 'Your account has been suspended' });
 
-    const fileType = req.file.mimetype.startsWith('video') ? 'video' : 'photo';
+    const fileType = (req.file.mimetype && req.file.mimetype.startsWith('video')) ||
+      /\.(webm|mp4|mov|mkv)$/i.test(req.file.filename) ? 'video' : 'photo';
 
     const photo = await Photo.create({
       participantNumber,
@@ -298,13 +335,96 @@ router.post('/api/admin/import-participants', async (req, res) => {
   }
 });
 
+router.get('/api/event-config', async (req, res) => {
+  try {
+    const settings = await getEventSettings();
+    res.json({
+      eventName: settings.eventName,
+      eventSubtitle: settings.eventSubtitle,
+      coverImage: settings.coverImage,
+      recapSlug: settings.recapSlug
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch event config' });
+  }
+});
+
+router.get('/api/admin/event-config', async (req, res) => {
+  try {
+    const settings = await getEventSettings();
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch event config' });
+  }
+});
+
+router.put('/api/admin/event-config', async (req, res) => {
+  try {
+    const { eventName, eventSubtitle, recapSlug, eventStartDate, eventEndDate, eventDays } = req.body;
+    const settings = await getEventSettings();
+    if (eventName !== undefined) settings.eventName = eventName.trim();
+    if (eventSubtitle !== undefined) settings.eventSubtitle = eventSubtitle.trim();
+    if (recapSlug !== undefined) {
+      const slug = recapSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+      const existing = await EventSettings.findOne({ recapSlug: slug, _id: { $ne: settings._id } });
+      if (existing) return res.status(409).json({ error: 'Recap slug already in use' });
+      settings.recapSlug = slug || 'moments';
+    }
+    if (eventStartDate) settings.eventStartDate = new Date(eventStartDate);
+    if (eventEndDate) settings.eventEndDate = new Date(eventEndDate);
+    if (eventDays !== undefined) settings.eventDays = Math.max(1, parseInt(eventDays) || 1);
+    await settings.save();
+    res.json({ success: true, settings });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update event config' });
+  }
+});
+
+router.post('/api/admin/event-cover', handleUpload('cover'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No cover image uploaded' });
+    const settings = await getEventSettings();
+    if (settings.coverImage) {
+      const oldPath = path.join(__dirname, 'uploads', settings.coverImage);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+    settings.coverImage = req.file.filename;
+    await settings.save();
+    res.json({ success: true, coverImage: settings.coverImage });
+  } catch (err) {
+    res.status(500).json({ error: 'Cover upload failed' });
+  }
+});
+
 router.get('/api/recap', async (req, res) => {
   try {
-    const { participant } = req.query;
+    const { participant, slug } = req.query;
+    const settings = await getEventSettings();
+    if (slug && slug !== settings.recapSlug) {
+      return res.status(404).json({ error: 'Recap album not found' });
+    }
     const query = participant ? { participantNumber: participant } : {};
     const photos = await Photo.find(query).sort({ uploadedAt: -1 });
-    const participants = await Photo.distinct('participantNumber');
-    res.json({ photos, participants });
+    const totalPeople = await User.countDocuments({ isBanned: { $ne: true } });
+    const uniqueUploaders = await Photo.distinct('participantNumber');
+    const days = settings.eventDays || Math.max(1, Math.ceil(
+      (new Date(settings.eventEndDate) - new Date(settings.eventStartDate)) / 86400000
+    ) + 1);
+    res.json({
+      photos,
+      participants: uniqueUploaders,
+      stats: {
+        moments: photos.length,
+        days,
+        people: Math.max(totalPeople, uniqueUploaders.length)
+      },
+      event: {
+        eventName: settings.eventName,
+        eventSubtitle: settings.eventSubtitle,
+        coverImage: settings.coverImage,
+        recapSlug: settings.recapSlug
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch recap' });
   }
@@ -312,7 +432,10 @@ router.get('/api/recap', async (req, res) => {
 
 router.get('/api/participants', async (req, res) => {
   try {
-    const users = await User.find({}, 'participantNumber fullName').sort({ participantNumber: 1 });
+    res.set('Cache-Control', 'no-store');
+    const users = await User.find({ isBanned: { $ne: true } }, 'participantNumber fullName')
+      .sort({ fullName: 1, participantNumber: 1 })
+      .lean();
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch participants' });
@@ -321,6 +444,7 @@ router.get('/api/participants', async (req, res) => {
 
 router.get('/api/messages', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const messages = await Message.find().sort({ sentAt: -1 }).limit(100);
     res.json(messages.reverse());
   } catch (err) {
@@ -361,10 +485,11 @@ router.get('/api/private-messages/:participantNumber', async (req, res) => {
   }
 });
 
-router.post('/api/chat/upload', upload.single('media'), async (req, res) => {
+router.post('/api/chat/upload', handleUpload('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const fileType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
+    const fileType = (req.file.mimetype && req.file.mimetype.startsWith('video')) ||
+      /\.(webm|mp4|mov)$/i.test(req.file.filename) ? 'video' : 'image';
     res.json({ success: true, filename: req.file.filename, mediaType: fileType });
   } catch (err) {
     console.error('Chat upload error:', err);
@@ -372,10 +497,29 @@ router.post('/api/chat/upload', upload.single('media'), async (req, res) => {
   }
 });
 
+router.post('/api/chat/share-gallery', async (req, res) => {
+  try {
+    const { photoId, participantNumber } = req.body;
+    const photo = await Photo.findById(photoId);
+    if (!photo) return res.status(404).json({ error: 'Media not found' });
+    if (photo.participantNumber !== participantNumber) {
+      return res.status(403).json({ error: 'Not your media' });
+    }
+    res.json({
+      success: true,
+      filename: photo.filename,
+      mediaType: photo.fileType === 'video' ? 'video' : 'image'
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Share failed' });
+  }
+});
+
 // ─── Pages ───
 router.get('/admin',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 router.get('/live',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'live-preview.html')));
 router.get('/recap',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'recap.html')));
+router.get('/recap/:slug', (req, res) => res.sendFile(path.join(__dirname, 'public', 'recap.html')));
 router.get('/',       (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Mount the router. If BASE_PATH is set (e.g. /cam), all routes live under it.
@@ -452,6 +596,8 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+server.timeout = 120000;
+server.keepAliveTimeout = 120000;
 server.listen(PORT, '0.0.0.0', () => {
   const base = BASE_PATH || '';
   console.log(`\n🎞️  Disposable Camera server running on port ${PORT}`);
