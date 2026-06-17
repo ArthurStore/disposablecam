@@ -1,9 +1,17 @@
 /* ═══════════════════════════════════════
    Disposable Camera — Admin Dashboard
+   (subdir-safe relative paths)
    ═══════════════════════════════════════ */
 
 (function () {
   'use strict';
+
+  // Admin is served at .../admin (no trailing slash). Compute the dir.
+  const BASE = (function () {
+    const p = window.location.pathname.replace(/\/admin\/?$/, '/');
+    return p.endsWith('/') ? p : p + '/';
+  })();
+  const api = (rel) => BASE + 'api/' + rel.replace(/^\//, '');
 
   let isLoggedIn = false;
 
@@ -14,14 +22,12 @@
   const pinError = document.getElementById('pin-error');
   const adminLogout = document.getElementById('admin-logout');
 
-  // Stats
   const statUsers = document.getElementById('stat-users');
   const statUploads = document.getElementById('stat-uploads');
   const statPhotos = document.getElementById('stat-photos');
   const statVideos = document.getElementById('stat-videos');
   const statMessages = document.getElementById('stat-messages');
 
-  // System
   const cpuBar = document.getElementById('cpu-bar');
   const cpuText = document.getElementById('cpu-text');
   const ramBar = document.getElementById('ram-bar');
@@ -30,44 +36,33 @@
   const diskText = document.getElementById('disk-text');
   const sysInfo = document.getElementById('sys-info');
 
-  // Import
   const importData = document.getElementById('import-data');
   const importBtn = document.getElementById('import-btn');
   const importResult = document.getElementById('import-result');
 
-  // Add user
   const addNumber = document.getElementById('add-number');
   const addName = document.getElementById('add-name');
   const addGender = document.getElementById('add-gender');
   const addUserBtn = document.getElementById('add-user-btn');
   const addResult = document.getElementById('add-result');
 
-  // Users table
   const usersTbody = document.getElementById('users-tbody');
 
-  // ─── Login ───
   pinSubmit.addEventListener('click', doLogin);
-  pinInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') doLogin();
-  });
+  pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 
   async function doLogin() {
     const pin = pinInput.value.trim();
     if (!pin) { pinError.textContent = 'Enter a PIN'; return; }
-
     pinSubmit.disabled = true;
     try {
-      const res = await fetch('api/admin/login', {
+      const res = await fetch(api('admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin })
       });
       const data = await res.json();
-
-      if (!res.ok) {
-        pinError.textContent = data.error || 'Invalid PIN';
-        return;
-      }
+      if (!res.ok) { pinError.textContent = data.error || 'Invalid PIN'; return; }
 
       isLoggedIn = true;
       loginScreen.classList.add('hidden');
@@ -87,32 +82,29 @@
     pinInput.value = '';
   });
 
-  // ─── Dashboard data ───
   function loadDashboard() {
     loadStats();
     loadSystem();
     loadUsers();
-
-    // Auto-refresh
     setInterval(loadStats, 10000);
     setInterval(loadSystem, 5000);
   }
 
   async function loadStats() {
     try {
-      const res = await fetch('api/admin/stats');
+      const res = await fetch(api('admin/stats'));
       const data = await res.json();
       statUsers.textContent = data.totalUsers;
       statUploads.textContent = data.totalUploads;
       statPhotos.textContent = data.totalPhotos;
       statVideos.textContent = data.totalVideos;
       statMessages.textContent = data.totalMessages;
-    } catch (err) { /* ignore */ }
+    } catch (err) {}
   }
 
   async function loadSystem() {
     try {
-      const res = await fetch('api/admin/system');
+      const res = await fetch(api('admin/system'));
       const data = await res.json();
 
       cpuBar.style.width = data.cpu + '%';
@@ -124,7 +116,6 @@
       diskBar.style.width = data.disk.percent + '%';
       diskText.textContent = `${data.disk.percent}% (${formatBytes(data.disk.used)} / ${formatBytes(data.disk.total)})`;
 
-      // Color code bars
       setBarColor(cpuBar, data.cpu);
       setBarColor(ramBar, data.memory.percent);
       setBarColor(diskBar, data.disk.percent);
@@ -132,39 +123,30 @@
       const upHrs = Math.floor(data.uptime / 3600);
       const upMins = Math.floor((data.uptime % 3600) / 60);
       sysInfo.textContent = `${data.hostname} · ${data.platform} · Uptime: ${upHrs}h ${upMins}m`;
-    } catch (err) { /* ignore */ }
+    } catch (err) {}
   }
 
   function setBarColor(el, percent) {
-    if (percent > 80) {
-      el.style.background = '#ef4444';
-    } else if (percent > 60) {
-      el.style.background = '#f59e0b';
-    } else {
-      el.style.background = '#22c55e';
-    }
+    if (percent > 80) el.style.background = '#ef4444';
+    else if (percent > 60) el.style.background = '#f59e0b';
+    else el.style.background = '#22c55e';
   }
 
-  // ─── Import ───
   importBtn.addEventListener('click', async () => {
     const data = importData.value.trim();
     if (!data) { setResult(importResult, 'Paste participant data first', 'error'); return; }
-
     importBtn.disabled = true;
-    importBtn.textContent = 'Importing...';
-
+    importBtn.textContent = 'Importing…';
     try {
-      const res = await fetch('api/admin/import-participants', {
+      const res = await fetch(api('admin/import-participants'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data })
       });
       const result = await res.json();
-
       if (res.ok) {
         setResult(importResult, `Imported: ${result.imported}, Skipped: ${result.skipped}`, 'success');
-        loadUsers();
-        loadStats();
+        loadUsers(); loadStats();
       } else {
         setResult(importResult, result.error || 'Import failed', 'error');
       }
@@ -176,42 +158,32 @@
     }
   });
 
-  // ─── Add user ───
   addUserBtn.addEventListener('click', async () => {
     const num = addNumber.value.trim();
     const name = addName.value.trim();
     const gender = addGender.value;
-
     if (!num || !name) { setResult(addResult, 'Fill in all fields', 'error'); return; }
-
     try {
-      const res = await fetch('api/admin/users', {
+      const res = await fetch(api('admin/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ participantNumber: num, fullName: name, gender })
       });
       const data = await res.json();
-
       if (res.ok) {
         setResult(addResult, `Added: ${name} (#${num})`, 'success');
-        addNumber.value = '';
-        addName.value = '';
-        loadUsers();
-        loadStats();
+        addNumber.value = ''; addName.value = '';
+        loadUsers(); loadStats();
       } else {
         setResult(addResult, data.error || 'Failed to add', 'error');
       }
-    } catch (err) {
-      setResult(addResult, 'Connection error', 'error');
-    }
+    } catch (err) { setResult(addResult, 'Connection error', 'error'); }
   });
 
-  // ─── Users table ───
   async function loadUsers() {
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await fetch(api('admin/users'));
       const users = await res.json();
-
       usersTbody.innerHTML = '';
       users.forEach(u => {
         const tr = document.createElement('tr');
@@ -225,19 +197,17 @@
         usersTbody.appendChild(tr);
       });
 
-      // Ban toggle handlers
       usersTbody.querySelectorAll('.btn-ban').forEach(btn => {
         btn.addEventListener('click', async () => {
           try {
-            const res = await fetch(`api/admin/users/${btn.dataset.id}/ban`, { method: 'PATCH' });
+            const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id) + '/ban'), { method: 'PATCH' });
             if (res.ok) loadUsers();
-          } catch (err) { /* ignore */ }
+          } catch (err) {}
         });
       });
-    } catch (err) { /* ignore */ }
+    } catch (err) {}
   }
 
-  // ─── Helpers ───
   function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
     const k = 1024;

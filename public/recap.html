@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <base href="./">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
   <title>Recap Album — Disposable Camera</title>
@@ -192,13 +193,13 @@
     const modalClose = document.getElementById('modal-close');
 
     async function loadRecap(participant) {
-      const url = participant ? `/api/recap?participant=${participant}` : '/api/recap';
+      const url = participant ? `api/recap?participant=${participant}` : 'api/recap';
       const res = await fetch(url);
       const data = await res.json();
 
       // Populate filter
       if (!participant && filterSelect.options.length <= 1) {
-        const pRes = await fetch('/api/participants');
+        const pRes = await fetch('api/participants');
         const participants = await pRes.json();
         participants.forEach(p => {
           const opt = document.createElement('option');
@@ -224,11 +225,11 @@
 
         if (p.fileType === 'video') {
           item.innerHTML = `
-            <video src="/uploads/${p.filename}" muted preload="metadata"></video>
+            <video src="uploads/${p.filename}" muted preload="metadata"></video>
             <span class="video-badge">▶ Video</span>
           `;
         } else {
-          item.innerHTML = `<img src="/uploads/${p.filename}" alt="${p.fullName}" loading="lazy">`;
+          item.innerHTML = `<img src="uploads/${p.filename}" alt="${p.fullName}" loading="lazy">`;
         }
 
         item.innerHTML += `
@@ -247,14 +248,14 @@
       modalContent.innerHTML = '';
       if (p.fileType === 'video') {
         const v = document.createElement('video');
-        v.src = `/uploads/${p.filename}`;
+        v.src = `uploads/${p.filename}`;
         v.controls = true;
         v.autoplay = true;
         v.className = 'modal-media';
         modalContent.appendChild(v);
       } else {
         const img = document.createElement('img');
-        img.src = `/uploads/${p.filename}`;
+        img.src = `uploads/${p.filename}`;
         img.className = 'modal-media';
         modalContent.appendChild(img);
       }

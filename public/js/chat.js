@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════
    Disposable Camera — Real-Time Chat
+   (subdir-safe Socket.IO path)
    ═══════════════════════════════════════ */
 
 /* globals io */
@@ -7,7 +8,15 @@
 (function () {
   'use strict';
 
-  const socket = io();
+  const BASE = (function () {
+    const p = window.location.pathname;
+    return p.endsWith('/') ? p : p.replace(/\/[^/]*$/, '/');
+  })();
+
+  // io() default path is `/socket.io`. When the app lives under /cam,
+  // the server mounts socket.io at /cam/socket.io, so we override.
+  const socket = io({ path: BASE + 'socket.io' });
+
   let chatUser = null;
   let unreadCount = 0;
   let chatVisible = false;
@@ -20,15 +29,14 @@
   const chatInput = document.getElementById('chat-input');
   const chatSendBtn = document.getElementById('chat-send-btn');
 
-  // Exposed globally so app.js can call it after login
   window.initChat = function (user) {
     chatUser = user;
     loadHistory();
   };
 
-  // Toggle chat panel
   chatToggleBtn.addEventListener('click', () => {
     chatVisible = !chatVisible;
+    chatPanel.classList.toggle('hidden', !chatVisible);
     chatPanel.classList.toggle('visible', chatVisible);
     if (chatVisible) {
       unreadCount = 0;
@@ -41,29 +49,24 @@
   chatCloseBtn.addEventListener('click', () => {
     chatVisible = false;
     chatPanel.classList.remove('visible');
+    chatPanel.classList.add('hidden');
   });
 
-  // Send message
   function sendMessage() {
     const text = chatInput.value.trim();
     if (!text || !chatUser) return;
-
     socket.emit('chat-message', {
       participantNumber: chatUser.participantNumber,
       fullName: chatUser.fullName,
       text
     });
-
     chatInput.value = '';
     if (navigator.vibrate) navigator.vibrate(20);
   }
 
   chatSendBtn.addEventListener('click', sendMessage);
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendMessage();
-  });
+  chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
 
-  // Receive message
   socket.on('chat-message', (msg) => {
     appendMessage(msg);
     if (!chatVisible) {
@@ -77,34 +80,27 @@
     const isSelf = chatUser && msg.participantNumber === chatUser.participantNumber;
     const el = document.createElement('div');
     el.className = `chat-msg${isSelf ? ' self' : ''}`;
-
     const time = new Date(msg.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
     el.innerHTML = `
       <div class="msg-sender">${escapeHtml(msg.fullName)} #${msg.participantNumber}</div>
       <div class="msg-text">${escapeHtml(msg.text)}</div>
       <div class="msg-time">${time}</div>
     `;
-
     chatMessages.appendChild(el);
     scrollToBottom();
   }
 
   async function loadHistory() {
     try {
-      const res = await fetch('/api/messages');
+      const res = await fetch(BASE + 'api/messages');
       const messages = await res.json();
       chatMessages.innerHTML = '';
       messages.forEach(appendMessage);
-    } catch (err) {
-      console.error('Failed to load chat history');
-    }
+    } catch (err) { console.error('Failed to load chat history'); }
   }
 
   function scrollToBottom() {
-    requestAnimationFrame(() => {
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    });
+    requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
   }
 
   function escapeHtml(str) {
