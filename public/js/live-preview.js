@@ -191,6 +191,17 @@
     }
   });
 
+  socket.on('event-reset', () => {
+    uploads = [];
+    clearTimeout(slideTimer);
+    spotlightMedia.innerHTML = '';
+    colLeft.innerHTML = '';
+    colRight.innerHTML = '';
+    waitingScreen.classList.remove('hidden');
+    liveApp.classList.add('hidden');
+    showMicroToast('Event data reset');
+  });
+
   function showMicroToast(msg) {
     microToast.textContent = msg;
     microToast.classList.add('show');

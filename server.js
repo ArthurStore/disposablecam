@@ -51,18 +51,26 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname) || (file.mimetype.startsWith('video') ? '.webm' : '.jpg');
+    const mime = (file.mimetype || '').toLowerCase();
+    const extFromName = path.extname(file.originalname || '').toLowerCase();
+    const ext = extFromName || (mime.startsWith('video') ? '.webm' : '.jpg');
     cb(null, `${uniqueSuffix}${ext}`);
   }
 });
+
+const ALLOWED_VIDEO_EXTS = new Set(['.webm', '.mp4', '.mov', '.mkv', '.avi', '.3gp', '.m4v']);
+const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif', '.bmp']);
 
 const upload = multer({
   storage,
   limits: { fileSize: (parseInt(process.env.UPLOAD_MAX_SIZE) || 100) * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const mime = file.mimetype || '';
+    const mime = (file.mimetype || '').toLowerCase();
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    // Accept by MIME prefix, octet-stream (raw blobs from MediaRecorder), or known extension
     if (mime.startsWith('image/') || mime.startsWith('video/') ||
-        mime === 'application/octet-stream' || mime === 'video/webm' || mime === 'video/mp4') {
+        mime === 'application/octet-stream' ||
+        ALLOWED_VIDEO_EXTS.has(ext) || ALLOWED_IMAGE_EXTS.has(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Only image and video files are allowed'), false);
@@ -332,6 +340,25 @@ router.post('/api/admin/import-participants', async (req, res) => {
     res.json({ success: true, imported, skipped });
   } catch (err) {
     res.status(500).json({ error: 'Import failed' });
+  }
+});
+
+router.post('/api/admin/reset-event', async (req, res) => {
+  try {
+    // Delete all uploaded files
+    const photos = await Photo.find({}, 'filename');
+    for (const p of photos) {
+      const fp = path.join(__dirname, 'uploads', p.filename);
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
+    await Photo.deleteMany({});
+    await Message.deleteMany({});
+    await PrivateMessage.deleteMany({});
+    io.emit('event-reset');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Reset error:', err);
+    res.status(500).json({ error: 'Reset failed' });
   }
 });
 

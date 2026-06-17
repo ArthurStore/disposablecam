@@ -65,6 +65,8 @@
   const evtResult = document.getElementById('evt-result');
   const recapUrlHint = document.getElementById('recap-url-hint');
   const recapLink = document.getElementById('recap-link');
+  const resetEventBtn = document.getElementById('reset-event-btn');
+  const resetResult = document.getElementById('reset-result');
 
   pinSubmit.addEventListener('click', doLogin);
   pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
@@ -170,6 +172,28 @@
       evtSaveBtn.disabled = false;
     }
   });
+
+  if (resetEventBtn) {
+    resetEventBtn.addEventListener('click', async () => {
+      if (!confirm('RESET ALL? This permanently deletes all photos, videos, and chat messages. Participants are kept. This cannot be undone.')) return;
+      if (!confirm('Are you absolutely sure? This action is irreversible.')) return;
+      resetEventBtn.disabled = true;
+      try {
+        const res = await fetch(api('admin/reset-event'), { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          setResult(resetResult, 'All media and chat wiped successfully', 'success');
+          loadStats();
+        } else {
+          setResult(resetResult, data.error || 'Reset failed', 'error');
+        }
+      } catch (err) {
+        setResult(resetResult, 'Connection error', 'error');
+      } finally {
+        resetEventBtn.disabled = false;
+      }
+    });
+  }
 
   function initAdminSocket() {
     if (typeof io === 'undefined') return;

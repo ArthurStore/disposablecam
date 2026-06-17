@@ -451,6 +451,27 @@ th {
   border: 1px solid var(--border);
 }
 
+/* ─── Danger panel ─── */
+.danger-panel {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.btn-danger {
+  padding: 13px 24px;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-danger:hover { background: #dc2626; }
+.btn-danger:active { transform: scale(0.97); }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Responsive */
 @media (max-width: 768px) {
   .admin-header {

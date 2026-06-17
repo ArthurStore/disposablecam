@@ -18,8 +18,9 @@
   const socket = io({
     path: BASE + 'socket.io',
     reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000
   });
 
   let chatUser = null;
@@ -29,7 +30,7 @@
   let privateRecipient = null;
   let privateRecipientName = '';
   let participantsCache = [];
-  let historyLoaded = false;
+  let participantLoadPending = false;
 
   const chatToggleBtn = document.getElementById('chat-toggle-btn');
   const chatBadge = document.getElementById('chat-badge');
@@ -43,6 +44,7 @@
   const privateRecipientBar = document.getElementById('private-recipient-bar');
   const privateRecipientInput = document.getElementById('private-recipient');
   const dmSearch = document.getElementById('dm-search');
+  const dmSelect = document.getElementById('dm-select');
   const dmParticipantList = document.getElementById('dm-participant-list');
   const chatAttachBtn = document.getElementById('chat-attach-btn');
   const chatUploadError = document.getElementById('chat-upload-error');
@@ -53,14 +55,14 @@
 
   async function fetchWithRetry(path, retries) {
     let lastErr;
-    for (let i = 0; i <= (retries || 2); i++) {
+    for (let i = 0; i <= (retries || 3); i++) {
       try {
         const res = await fetch(api(path), { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res;
       } catch (e) {
         lastErr = e;
-        if (i < (retries || 2)) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+        if (i < (retries || 3)) await new Promise((r) => setTimeout(r, 600 * (i + 1)));
       }
     }
     throw lastErr;
@@ -68,7 +70,7 @@
 
   window.initChat = function (user) {
     chatUser = user;
-    loadParticipants(true);
+    loadParticipants();
     loadHistory(true);
   };
 
@@ -81,7 +83,10 @@
       chatBadge.classList.add('hidden');
       chatInput.focus();
       if (chatMode === 'public') loadHistory(true);
-      else loadParticipants(true);
+      else {
+        loadParticipants();
+        if (privateRecipient) loadPrivateHistory(true);
+      }
       scrollToBottom();
     }
   });
@@ -102,42 +107,65 @@
     privateRecipientBar.classList.toggle('hidden', mode !== 'private');
     chatMessages.innerHTML = '';
     hideUploadError();
-    if (mode === 'public') loadHistory(true);
-    else {
-      loadParticipants(true);
+    if (mode === 'public') {
+      loadHistory(true);
+    } else {
+      loadParticipants();
       if (privateRecipient) loadPrivateHistory(true);
     }
   }
 
-  dmSearch.addEventListener('input', () => {
-    const q = dmSearch.value.trim().toLowerCase();
-    dmParticipantList.querySelectorAll('.dm-participant-item').forEach((el) => {
-      const name = (el.dataset.name || '').toLowerCase();
-      const num = (el.dataset.num || '').toLowerCase();
-      el.classList.toggle('hidden-by-search', q && !name.includes(q) && !num.includes(q));
+  // Search bar filters the list
+  if (dmSearch) {
+    dmSearch.addEventListener('input', () => {
+      const q = dmSearch.value.trim().toLowerCase();
+      dmParticipantList.querySelectorAll('.dm-participant-item').forEach((el) => {
+        const name = (el.dataset.name || '').toLowerCase();
+        const num = (el.dataset.num || '').toLowerCase();
+        el.classList.toggle('hidden-by-search', q.length > 0 && !name.includes(q) && !num.includes(q));
+      });
     });
-  });
+  }
 
-  async function loadParticipants(force) {
-    if (participantsCache.length && !force) {
-      renderParticipantList(participantsCache);
-      return;
-    }
+  // Dropdown select handler
+  if (dmSelect) {
+    dmSelect.addEventListener('change', () => {
+      const val = dmSelect.value;
+      if (!val) return;
+      const u = participantsCache.find((p) => p.participantNumber === val);
+      if (!u) return;
+      const matchingBtn = dmParticipantList.querySelector(`[data-num="${val}"]`);
+      selectRecipient(u.participantNumber, u.fullName, matchingBtn);
+    });
+  }
+
+  async function loadParticipants() {
+    if (participantLoadPending) return;
+    participantLoadPending = true;
     try {
       const res = await fetchWithRetry('participants');
-      participantsCache = await res.json();
-      renderParticipantList(participantsCache);
+      const data = await res.json();
+      participantsCache = data;
+      renderParticipantList(data);
     } catch (err) {
-      if (participantsCache.length) renderParticipantList(participantsCache);
-      else showUploadError('Could not load participants — tap Private again to retry');
+      if (participantsCache.length) {
+        renderParticipantList(participantsCache);
+      } else {
+        showUploadError('Could not load participants — tap Private again to retry');
+      }
+    } finally {
+      participantLoadPending = false;
     }
   }
 
   function renderParticipantList(users) {
+    if (!chatUser) return;
     const prev = privateRecipient;
+    const filtered = users.filter((u) => u.participantNumber !== chatUser.participantNumber);
+
+    // Update list buttons
     dmParticipantList.innerHTML = '';
-    users.forEach((u) => {
-      if (u.participantNumber === chatUser.participantNumber) return;
+    filtered.forEach((u) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'dm-participant-item' + (u.participantNumber === prev ? ' selected' : '');
@@ -147,15 +175,32 @@
       btn.addEventListener('click', () => selectRecipient(u.participantNumber, u.fullName, btn));
       dmParticipantList.appendChild(btn);
     });
+
+    // Update dropdown
+    if (dmSelect) {
+      const current = dmSelect.value;
+      dmSelect.innerHTML = '<option value="">— Select recipient —</option>';
+      filtered.forEach((u) => {
+        const opt = document.createElement('option');
+        opt.value = u.participantNumber;
+        opt.textContent = `${u.fullName} (#${u.participantNumber})`;
+        if (u.participantNumber === current) opt.selected = true;
+        dmSelect.appendChild(opt);
+      });
+      if (prev && dmSelect.value !== prev) dmSelect.value = prev;
+    }
   }
 
   function selectRecipient(num, name, btnEl) {
     privateRecipient = num;
     privateRecipientName = name;
     privateRecipientInput.value = num;
+
     dmParticipantList.querySelectorAll('.dm-participant-item').forEach((el) => {
       el.classList.toggle('selected', el === btnEl);
     });
+    if (dmSelect && dmSelect.value !== num) dmSelect.value = num;
+
     loadPrivateHistory(true);
   }
 
@@ -268,7 +313,7 @@
       }
       chatInput.value = '';
     } catch (err) {
-      showUploadError('Video upload failed, please check your network connection');
+      showUploadError('Share failed — check your connection');
     } finally {
       chatAttachBtn.disabled = false;
     }
@@ -286,15 +331,17 @@
   }
 
   socket.on('connect', () => {
-    if (chatUser && chatVisible) {
-      if (chatMode === 'public') loadHistory(true);
-      else if (privateRecipient) loadPrivateHistory(true);
+    if (!chatUser) return;
+    if (chatMode === 'public') loadHistory(true);
+    else {
+      loadParticipants();
+      if (privateRecipient) loadPrivateHistory(true);
     }
   });
 
   socket.on('chat-message', (msg) => {
-    if (chatMode === 'public') appendPublicMessage(msg);
-    if (!chatVisible && chatMode === 'public') bumpUnread();
+    if (chatMode === 'public' && chatVisible) appendPublicMessage(msg);
+    if (!chatVisible || chatMode !== 'public') bumpUnread();
   });
 
   socket.on('private-message', (msg) => {
@@ -302,15 +349,15 @@
     const involved = msg.fromParticipantNumber === chatUser.participantNumber ||
       msg.toParticipantNumber === chatUser.participantNumber;
     if (!involved) return;
-    if (chatMode === 'private') {
-      if (privateRecipient &&
-          !((msg.fromParticipantNumber === chatUser.participantNumber && msg.toParticipantNumber === privateRecipient) ||
-            (msg.toParticipantNumber === chatUser.participantNumber && msg.fromParticipantNumber === privateRecipient))) {
-        return;
-      }
-      appendPrivateMessage(msg);
+
+    if (chatMode === 'private' && chatVisible) {
+      const isThisConvo = privateRecipient && (
+        (msg.fromParticipantNumber === chatUser.participantNumber && msg.toParticipantNumber === privateRecipient) ||
+        (msg.toParticipantNumber === chatUser.participantNumber && msg.fromParticipantNumber === privateRecipient)
+      );
+      if (isThisConvo) appendPrivateMessage(msg);
     }
-    if (!chatVisible && chatMode === 'private') bumpUnread();
+    if (!chatVisible) bumpUnread();
   });
 
   function bumpUnread() {
@@ -347,7 +394,7 @@
     }
 
     el.innerHTML = `
-      <div class="msg-sender">${escapeHtml(sender)} ${escapeHtml(sub)}</div>
+      <div class="msg-sender">${escapeHtml(sender)} <span class="msg-sub">${escapeHtml(sub)}</span></div>
       ${msg.text ? `<div class="msg-text">${escapeHtml(msg.text)}</div>` : ''}
       ${mediaHtml}
       <div class="msg-time">${time}</div>
@@ -357,22 +404,22 @@
   }
 
   async function loadHistory(force) {
-    if (historyLoaded && !force) return;
     try {
-      const res = await fetchWithRetry('messages');
+      const res = await fetchWithRetry('messages', 3);
       const messages = await res.json();
       chatMessages.innerHTML = '';
       messages.forEach(appendPublicMessage);
-      historyLoaded = true;
     } catch (err) {
-      showUploadError('Chat history unavailable — reconnecting…');
+      if (chatMessages.children.length === 0) {
+        showUploadError('Chat history unavailable — reconnecting…');
+      }
     }
   }
 
-  async function loadPrivateHistory(force) {
+  async function loadPrivateHistory() {
     if (!chatUser || !privateRecipient) return;
     try {
-      const res = await fetchWithRetry('private-messages/' + encodeURIComponent(chatUser.participantNumber));
+      const res = await fetchWithRetry('private-messages/' + encodeURIComponent(chatUser.participantNumber), 3);
       const messages = await res.json();
       chatMessages.innerHTML = '';
       messages
@@ -392,7 +439,7 @@
 
   function escapeHtml(str) {
     const div = document.createElement('div');
-    div.textContent = str;
+    div.textContent = String(str || '');
     return div.innerHTML;
   }
 })();

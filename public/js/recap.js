@@ -61,41 +61,61 @@
   }
 
   async function loadRecap() {
-    const res = await fetch(api('recap') + (pathSlug ? `?slug=${encodeURIComponent(pathSlug)}` : ''));
-    if (!res.ok) {
-      empty.classList.remove('hidden');
-      empty.textContent = 'Album not found';
-      return;
-    }
-    const data = await res.json();
-    allPhotos = data.photos || [];
-
-    if (data.event) {
-      heroTitle.textContent = data.event.eventName || 'The Moments';
-      heroSubtitle.textContent = data.event.eventSubtitle || '';
-      if (data.event.coverImage) {
-        heroBg.style.backgroundImage = `url('${url('uploads/' + data.event.coverImage)}')`;
+    try {
+      const res = await fetch(api('recap') + (pathSlug ? `?slug=${encodeURIComponent(pathSlug)}` : ''));
+      if (!res.ok) {
+        empty.classList.remove('hidden');
+        empty.textContent = res.status === 404 ? 'Album not found' : 'Failed to load album';
+        return;
       }
-      document.title = data.event.eventName + ' — Recap';
+      const data = await res.json();
+      allPhotos = data.photos || [];
+
+      if (data.event) {
+        heroTitle.textContent = data.event.eventName || 'The Moments';
+        heroSubtitle.textContent = data.event.eventSubtitle || '';
+        if (data.event.coverImage) {
+          heroBg.style.backgroundImage = `url('${url('uploads/' + data.event.coverImage)}')`;
+        }
+        document.title = (data.event.eventName || 'Recap') + ' — Moments';
+      }
+
+      if (data.stats) {
+        animateCount(statMoments, data.stats.moments);
+        animateCount(statDays, data.stats.days);
+        animateCount(statPeople, data.stats.people);
+      }
+
+      try {
+        const pRes = await fetch(api('participants'));
+        if (pRes.ok) {
+          const participants = await pRes.json();
+          peopleSelect.innerHTML = '<option value="">All people</option>';
+          participants.forEach((p) => {
+            const opt = document.createElement('option');
+            opt.value = p.participantNumber;
+            opt.textContent = p.fullName;
+            peopleSelect.appendChild(opt);
+          });
+        }
+      } catch (e) {}
+
+      renderGrid();
+    } catch (err) {
+      empty.classList.remove('hidden');
+      empty.textContent = 'Could not load album — check your connection';
     }
+  }
 
-    if (data.stats) {
-      statMoments.textContent = data.stats.moments;
-      statDays.textContent = data.stats.days;
-      statPeople.textContent = data.stats.people;
-    }
-
-    const pRes = await fetch(api('participants'));
-    const participants = await pRes.json();
-    peopleSelect.innerHTML = '<option value="">All people</option>';
-    participants.forEach((p) => {
-      const opt = document.createElement('option');
-      opt.value = p.participantNumber;
-      opt.textContent = p.fullName;
-      peopleSelect.appendChild(opt);
-    });
-
-    renderGrid();
+  function animateCount(el, target) {
+    const n = parseInt(target, 10) || 0;
+    let cur = 0;
+    const step = Math.max(1, Math.ceil(n / 30));
+    const id = setInterval(() => {
+      cur = Math.min(cur + step, n);
+      el.textContent = cur;
+      if (cur >= n) clearInterval(id);
+    }, 30);
   }
 
   function renderGrid() {
@@ -114,12 +134,15 @@
     photos.forEach((p) => {
       const item = document.createElement('div');
       item.className = 'recap-item';
-      const tag = (p.fullName || '').split(' ')[0].toUpperCase();
+      const nameParts = (p.fullName || '').split(' ');
+      const tag = nameParts.length > 1
+        ? nameParts[0] + ' ' + nameParts[nameParts.length - 1].charAt(0) + '.'
+        : nameParts[0] || '';
 
       if (p.fileType === 'video') {
-        item.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video><span class="video-tag">▶</span>`;
+        item.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video><span class="video-tag">&#9654;</span>`;
       } else {
-        item.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="" loading="lazy">`;
+        item.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="${escapeHtml(p.fullName || '')}" loading="lazy">`;
       }
       item.innerHTML += `<span class="name-tag">${escapeHtml(tag)}</span>`;
       item.addEventListener('click', () => openModal(p));

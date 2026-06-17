@@ -286,6 +286,11 @@
         }, 2000);
       }
     });
+
+    socket.on('event-reset', () => {
+      showMicroToast('Event data has been reset by admin');
+      refreshGalleryThumb();
+    });
   }
 
   logoutBtn.addEventListener('click', () => {

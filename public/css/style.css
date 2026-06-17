@@ -78,18 +78,23 @@ html, body {
 .welcome-cover {
   position: absolute;
   inset: 0;
-  background: #111 center/cover no-repeat;
-  transform: scale(1.02);
+  background-color: #111;
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform: scale(1.04);
+  transform-origin: center center;
+  will-change: transform;
 }
 
 .welcome-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.92) 100%);
+  background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.88) 70%, rgba(0,0,0,0.98) 100%);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: calc(40px + var(--safe-bottom)) 24px 48px;
+  padding: 0 24px calc(48px + var(--safe-bottom));
 }
 
 .welcome-content {
@@ -108,10 +113,11 @@ html, body {
 
 .welcome-content h1 {
   font-family: 'Instrument Serif', Georgia, serif;
-  font-size: clamp(2rem, 8vw, 2.75rem);
+  font-size: clamp(2.4rem, 9vw, 3.2rem);
   font-weight: 400;
-  line-height: 1.1;
-  margin-bottom: 8px;
+  line-height: 1.05;
+  margin-bottom: 10px;
+  text-shadow: 0 2px 24px rgba(0,0,0,0.6);
 }
 
 .welcome-subtitle {
@@ -1044,3 +1050,45 @@ html, body {
   #app { max-width: 430px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .chat-fab { right: calc(50% - 215px + 16px); }
 }
+
+/* ─── DM select dropdown ─── */
+.dm-select-dropdown {
+  width: 100%;
+  padding: 11px 14px;
+  background: rgba(255, 181, 71, 0.06);
+  border: 1px solid rgba(255, 181, 71, 0.3);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+  margin-bottom: 4px;
+}
+.dm-select-dropdown:focus { border-color: var(--accent); }
+.dm-select-dropdown option { background: #1b1b22; color: var(--text); }
+
+/* ─── Chat message sub-label ─── */
+.chat-msg .msg-sub {
+  color: var(--text-mute);
+  font-weight: 400;
+  font-size: 0.65rem;
+}
+
+/* ─── Premium profile chip bold ─── */
+.profile-text h1 { font-weight: 700; }
+
+/* ─── Bolder mode pill ─── */
+.video-mode-btn { font-weight: 700; }
+.chat-tab { font-weight: 700; }
+.review-btn { letter-spacing: 0.02em; }
+
+/* ─── Welcome form upgrade ─── */
+.welcome-form input {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.welcome-eyebrow { font-weight: 700; letter-spacing: 0.25em; }
+.welcome-subtitle { font-weight: 500; }
+.btn-primary { letter-spacing: 0.03em; }
