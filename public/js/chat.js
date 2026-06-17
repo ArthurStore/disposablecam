@@ -55,9 +55,11 @@
 
   async function fetchWithRetry(path, retries) {
     let lastErr;
+    // 'reload' bypasses both HTTP cache and SW cache, forces network request
+    const cacheBust = '?_t=' + Date.now();
     for (let i = 0; i <= (retries || 3); i++) {
       try {
-        const res = await fetch(api(path), { cache: 'no-store' });
+        const res = await fetch(api(path) + cacheBust, { cache: 'reload' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res;
       } catch (e) {
@@ -140,17 +142,19 @@
   }
 
   async function loadParticipants() {
+    // Always render from cache immediately so the UI never appears empty
+    if (participantsCache.length) renderParticipantList(participantsCache);
     if (participantLoadPending) return;
     participantLoadPending = true;
     try {
       const res = await fetchWithRetry('participants');
       const data = await res.json();
-      participantsCache = data;
-      renderParticipantList(data);
+      if (Array.isArray(data) && data.length >= 0) {
+        participantsCache = data;
+        renderParticipantList(data);
+      }
     } catch (err) {
-      if (participantsCache.length) {
-        renderParticipantList(participantsCache);
-      } else {
+      if (!participantsCache.length) {
         showUploadError('Could not load participants — tap Private again to retry');
       }
     } finally {

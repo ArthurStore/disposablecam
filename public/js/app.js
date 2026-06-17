@@ -220,8 +220,14 @@
     const saved = localStorage.getItem('dc_user');
     if (saved) {
       try {
-        currentUser = JSON.parse(saved);
-        showApp();
+        const parsed = JSON.parse(saved);
+        // Validate required fields — clears stale/incompatible sessions
+        if (parsed && parsed.participantNumber && parsed.fullName && parsed.gender) {
+          currentUser = parsed;
+          showApp();
+        } else {
+          localStorage.removeItem('dc_user');
+        }
       } catch (e) { localStorage.removeItem('dc_user'); }
     }
   }
