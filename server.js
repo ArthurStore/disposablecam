@@ -11,6 +11,7 @@ const connectDB = require('./config/db');
 const User = require('./models/User');
 const Photo = require('./models/Photo');
 const Message = require('./models/Message');
+const PrivateMessage = require('./models/PrivateMessage');
 const AdminPin = require('./models/AdminPin');
 const bcrypt = require('bcryptjs');
 
@@ -98,7 +99,7 @@ router.post('/api/validate', async (req, res) => {
 router.post('/api/upload', upload.single('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const { participantNumber, fullName, gender, caption } = req.body;
+    const { participantNumber, fullName, gender, caption, captionPosition } = req.body;
     const user = await User.findOne({ participantNumber });
     if (!user) return res.status(404).json({ error: 'Participant not found' });
     if (user.isBanned) return res.status(403).json({ error: 'Your account has been suspended' });
@@ -114,6 +115,7 @@ router.post('/api/upload', upload.single('media'), async (req, res) => {
       mimetype: req.file.mimetype,
       fileType,
       caption: caption || '',
+      captionPosition: captionPosition === 'top' ? 'top' : 'bottom',
       fileSize: req.file.size
     });
 
@@ -125,6 +127,7 @@ router.post('/api/upload', upload.single('media'), async (req, res) => {
       filename: photo.filename,
       fileType: photo.fileType,
       caption: photo.caption,
+      captionPosition: photo.captionPosition,
       uploadedAt: photo.uploadedAt
     });
 
@@ -222,9 +225,25 @@ router.patch('/api/admin/users/:id/ban', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     user.isBanned = !user.isBanned;
     await user.save();
+    if (user.isBanned) {
+      io.emit('participant-revoked', { participantNumber: user.participantNumber, reason: 'banned' });
+    }
     res.json({ success: true, isBanned: user.isBanned });
   } catch (err) {
     res.status(500).json({ error: 'Failed to toggle ban' });
+  }
+});
+
+router.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const participantNumber = user.participantNumber;
+    await User.findByIdAndDelete(req.params.id);
+    io.emit('participant-revoked', { participantNumber, reason: 'deleted' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete participant' });
   }
 });
 
@@ -309,6 +328,50 @@ router.get('/api/messages', async (req, res) => {
   }
 });
 
+router.get('/api/admin/messages', async (req, res) => {
+  try {
+    const messages = await Message.find().sort({ sentAt: -1 }).limit(200);
+    res.json(messages.reverse());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+router.get('/api/admin/private-messages', async (req, res) => {
+  try {
+    const messages = await PrivateMessage.find().sort({ sentAt: -1 }).limit(300);
+    res.json(messages.reverse());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch private messages' });
+  }
+});
+
+router.get('/api/private-messages/:participantNumber', async (req, res) => {
+  try {
+    const num = req.params.participantNumber;
+    const messages = await PrivateMessage.find({
+      $or: [
+        { fromParticipantNumber: num },
+        { toParticipantNumber: num }
+      ]
+    }).sort({ sentAt: 1 }).limit(200);
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch private messages' });
+  }
+});
+
+router.post('/api/chat/upload', upload.single('media'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const fileType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
+    res.json({ success: true, filename: req.file.filename, mediaType: fileType });
+  } catch (err) {
+    console.error('Chat upload error:', err);
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
 // ─── Pages ───
 router.get('/admin',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 router.get('/live',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'live-preview.html')));
@@ -326,24 +389,65 @@ if (BASE_PATH) {
 // ═══ Socket.IO ═══
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
+
+  socket.on('join-admin', () => {
+    socket.join('admin');
+  });
+
   socket.on('chat-message', async (data) => {
     try {
+      if (!data.text && !data.mediaFilename) return;
       const msg = await Message.create({
         participantNumber: data.participantNumber,
         fullName: data.fullName,
-        text: data.text
+        text: data.text || '',
+        mediaFilename: data.mediaFilename || '',
+        mediaType: data.mediaType || ''
       });
-      io.emit('chat-message', {
+      const payload = {
         _id: msg._id,
         participantNumber: msg.participantNumber,
         fullName: msg.fullName,
         text: msg.text,
+        mediaFilename: msg.mediaFilename,
+        mediaType: msg.mediaType,
         sentAt: msg.sentAt
-      });
+      };
+      io.emit('chat-message', payload);
     } catch (err) {
       console.error('Chat message error:', err);
     }
   });
+
+  socket.on('private-message', async (data) => {
+    try {
+      if (!data.text && !data.mediaFilename) return;
+      const msg = await PrivateMessage.create({
+        fromParticipantNumber: data.fromParticipantNumber,
+        fromFullName: data.fromFullName,
+        toParticipantNumber: data.toParticipantNumber,
+        toFullName: data.toFullName,
+        text: data.text || '',
+        mediaFilename: data.mediaFilename || '',
+        mediaType: data.mediaType || ''
+      });
+      const payload = {
+        _id: msg._id,
+        fromParticipantNumber: msg.fromParticipantNumber,
+        fromFullName: msg.fromFullName,
+        toParticipantNumber: msg.toParticipantNumber,
+        toFullName: msg.toFullName,
+        text: msg.text,
+        mediaFilename: msg.mediaFilename,
+        mediaType: msg.mediaType,
+        sentAt: msg.sentAt
+      };
+      io.emit('private-message', payload);
+    } catch (err) {
+      console.error('Private message error:', err);
+    }
+  });
+
   socket.on('disconnect', () => console.log('Client disconnected:', socket.id));
 });
 

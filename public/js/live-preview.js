@@ -1,5 +1,7 @@
 /* ═══════════════════════════════════════
-   Disposable Camera — Live Preview (Projector)
+   Disposable Camera — Live Preview
+   Instagram Story grid + spotlight rotation
+   (subdir-safe relative paths)
    ═══════════════════════════════════════ */
 
 /* globals io */
@@ -7,127 +9,150 @@
 (function () {
   'use strict';
 
-  const socket = io();
-  const SLIDE_DURATION = 8000; // ms per slide (photos)
-  const VIDEO_MAX_DURATION = 30000; // max video play time
+  const BASE = (function () {
+    const p = window.location.pathname.replace(/\/live\/?$/, '/');
+    return p.endsWith('/') ? p : p + '/';
+  })();
+  const api = (rel) => BASE + 'api/' + rel.replace(/^\//, '');
+  const url = (rel) => BASE + rel.replace(/^\//, '');
+
+  const socket = io({ path: BASE + 'socket.io' });
+  const SLIDE_DURATION = 8000;
+  const VIDEO_MAX_DURATION = 30000;
 
   let uploads = [];
   let currentIndex = 0;
   let slideTimer = null;
 
   const waitingScreen = document.getElementById('waiting-screen');
-  const slideshow = document.getElementById('slideshow');
-  const progressBar = document.getElementById('slide-progress');
-  const counterEl = document.getElementById('slide-counter');
-  const prevMedia = document.getElementById('prev-media');
-  const centerMedia = document.getElementById('center-media');
-  const nextMedia = document.getElementById('next-media');
-  const centerName = document.getElementById('center-name');
-  const centerNumber = document.getElementById('center-number');
-  const centerGender = document.getElementById('center-gender');
-  const centerCaption = document.getElementById('center-caption');
-  const toast = document.getElementById('new-upload-toast');
+  const liveApp = document.getElementById('live-app');
+  const uploadCount = document.getElementById('upload-count');
+  const liveClock = document.getElementById('live-clock');
+  const spotlightMedia = document.getElementById('spotlight-media');
+  const spotlightCaption = document.getElementById('spotlight-caption');
+  const spotlightAvatar = document.getElementById('spotlight-avatar');
+  const spotlightName = document.getElementById('spotlight-name');
+  const spotlightNumber = document.getElementById('spotlight-number');
+  const spotlightBar = document.getElementById('spotlight-bar');
+  const storyGrid = document.getElementById('story-grid');
+  const microToast = document.getElementById('micro-toast');
 
-  // ─── Load all uploads ───
+  function startClock() {
+    function tick() {
+      const d = new Date();
+      liveClock.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    tick();
+    setInterval(tick, 30000);
+  }
+
   async function loadUploads() {
     try {
-      const res = await fetch('/api/all-uploads');
+      const res = await fetch(api('all-uploads'));
       uploads = await res.json();
-      // Reverse so oldest first for slideshow
       uploads.reverse();
 
       if (uploads.length > 0) {
-        waitingScreen.style.display = 'none';
-        slideshow.style.display = 'block';
+        waitingScreen.classList.add('hidden');
+        liveApp.classList.remove('hidden');
+        renderGrid();
         showSlide(0);
+        startClock();
       }
     } catch (err) {
       console.error('Failed to load uploads');
     }
   }
 
-  // ─── Show a slide ───
+  function renderGrid() {
+    storyGrid.innerHTML = '';
+    uploadCount.textContent = `${uploads.length} moment${uploads.length !== 1 ? 's' : ''}`;
+
+    uploads.forEach((item, idx) => {
+      const el = document.createElement('div');
+      el.className = 'grid-item' + (idx === currentIndex ? ' active' : '');
+      el.dataset.index = idx;
+
+      if (item.fileType === 'video') {
+        el.innerHTML = `
+          <video src="${url('uploads/' + item.filename)}" muted preload="metadata"></video>
+          <span class="grid-video-badge">▶</span>
+          <span class="grid-user">${escapeHtml(item.fullName)}</span>
+        `;
+      } else {
+        el.innerHTML = `
+          <img src="${url('uploads/' + item.filename)}" alt="" loading="lazy">
+          <span class="grid-user">${escapeHtml(item.fullName)}</span>
+        `;
+      }
+
+      el.addEventListener('click', () => {
+        clearTimeout(slideTimer);
+        showSlide(idx);
+      });
+
+      storyGrid.appendChild(el);
+    });
+
+    scrollActiveIntoView();
+  }
+
+  function scrollActiveIntoView() {
+    const active = storyGrid.querySelector('.grid-item.active');
+    if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
   function showSlide(index) {
     if (uploads.length === 0) return;
 
     currentIndex = index % uploads.length;
     const current = uploads[currentIndex];
-    const prev = uploads[(currentIndex - 1 + uploads.length) % uploads.length];
-    const next = uploads[(currentIndex + 1) % uploads.length];
 
-    // Update counter
-    counterEl.textContent = `${currentIndex + 1} / ${uploads.length}`;
+    storyGrid.querySelectorAll('.grid-item').forEach((el, i) => {
+      el.classList.toggle('active', i === currentIndex);
+    });
+    scrollActiveIntoView();
 
-    // Center panel
-    centerMedia.innerHTML = '';
+    spotlightMedia.innerHTML = '';
+    clearTimeout(slideTimer);
+
     if (current.fileType === 'video') {
       const vid = document.createElement('video');
-      vid.src = `/uploads/${current.filename}`;
+      vid.src = url('uploads/' + current.filename);
       vid.autoplay = true;
       vid.muted = false;
       vid.playsInline = true;
       vid.onended = () => advanceSlide();
-      centerMedia.appendChild(vid);
-
-      // Safety timeout for long videos
-      clearTimeout(slideTimer);
+      spotlightMedia.appendChild(vid);
       slideTimer = setTimeout(advanceSlide, VIDEO_MAX_DURATION);
-
-      // No progress bar for video
-      progressBar.style.width = '0%';
+      spotlightBar.style.transition = 'none';
+      spotlightBar.style.width = '0%';
     } else {
       const img = document.createElement('img');
-      img.src = `/uploads/${current.filename}`;
-      centerMedia.appendChild(img);
+      img.src = url('uploads/' + current.filename);
+      spotlightMedia.appendChild(img);
 
-      // Progress bar animation
-      progressBar.style.transition = 'none';
-      progressBar.style.width = '0%';
+      spotlightBar.style.transition = 'none';
+      spotlightBar.style.width = '0%';
       requestAnimationFrame(() => {
-        progressBar.style.transition = `width ${SLIDE_DURATION}ms linear`;
-        progressBar.style.width = '100%';
+        spotlightBar.style.transition = `width ${SLIDE_DURATION}ms linear`;
+        spotlightBar.style.width = '100%';
       });
-
-      clearTimeout(slideTimer);
       slideTimer = setTimeout(advanceSlide, SLIDE_DURATION);
     }
 
-    // Center info
-    centerName.textContent = current.fullName;
-    centerNumber.textContent = `#${current.participantNumber}`;
-
     const isMale = current.gender === 'L';
-    centerGender.className = `gender-badge ${isMale ? 'male' : 'female'}`;
-    centerGender.innerHTML = isMale ? '♂' : '♀';
+    spotlightAvatar.className = `spotlight-avatar ${isMale ? 'male' : 'female'}`;
+    spotlightAvatar.textContent = isMale ? '♂' : '♀';
+    spotlightName.textContent = current.fullName;
+    spotlightNumber.textContent = `#${current.participantNumber}`;
 
-    // Caption
     if (current.caption) {
-      centerCaption.textContent = `"${current.caption}"`;
-      centerCaption.style.display = 'block';
+      spotlightCaption.textContent = current.caption;
+      spotlightCaption.className = 'spotlight-caption ' + (current.captionPosition || 'bottom');
+      spotlightCaption.classList.remove('hidden');
     } else {
-      centerCaption.style.display = 'none';
-    }
-
-    // Side panels
-    renderSidePanel(prevMedia, prev);
-    renderSidePanel(nextMedia, next);
-  }
-
-  function renderSidePanel(container, item) {
-    container.innerHTML = '';
-    if (!item) return;
-
-    if (item.fileType === 'video') {
-      const vid = document.createElement('video');
-      vid.src = `/uploads/${item.filename}`;
-      vid.muted = true;
-      vid.preload = 'metadata';
-      container.appendChild(vid);
-    } else {
-      const img = document.createElement('img');
-      img.src = `/uploads/${item.filename}`;
-      img.loading = 'lazy';
-      container.appendChild(img);
+      spotlightCaption.classList.add('hidden');
     }
   }
 
@@ -136,18 +161,21 @@
     showSlide(currentIndex + 1);
   }
 
-  // ─── Real-time updates ───
   socket.on('new-upload', (data) => {
     uploads.push(data);
+    uploadCount.textContent = `${uploads.length} moment${uploads.length !== 1 ? 's' : ''}`;
 
     if (uploads.length === 1) {
-      waitingScreen.style.display = 'none';
-      slideshow.style.display = 'block';
+      waitingScreen.classList.add('hidden');
+      liveApp.classList.remove('hidden');
+      startClock();
+      renderGrid();
       showSlide(0);
+    } else {
+      renderGrid();
     }
 
-    // Toast notification
-    showToast();
+    showMicroToast('New moment captured');
   });
 
   socket.on('media-deleted', (data) => {
@@ -155,32 +183,36 @@
     if (idx !== -1) {
       uploads.splice(idx, 1);
       if (uploads.length === 0) {
-        waitingScreen.style.display = 'flex';
-        slideshow.style.display = 'none';
+        waitingScreen.classList.remove('hidden');
+        liveApp.classList.add('hidden');
         clearTimeout(slideTimer);
-      } else if (currentIndex >= uploads.length) {
-        showSlide(0);
       } else {
-        showSlide(currentIndex);
+        renderGrid();
+        if (currentIndex >= uploads.length) showSlide(0);
+        else showSlide(currentIndex);
       }
     }
   });
 
-  function showToast() {
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
+  function showMicroToast(msg) {
+    microToast.textContent = msg;
+    microToast.classList.add('show');
+    setTimeout(() => microToast.classList.remove('show'), 2500);
   }
 
-  // ─── Keyboard navigation ───
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === ' ') {
-      advanceSlide();
-    } else if (e.key === 'ArrowLeft') {
+    if (e.key === 'ArrowRight' || e.key === ' ') advanceSlide();
+    else if (e.key === 'ArrowLeft') {
       clearTimeout(slideTimer);
       showSlide(currentIndex - 1 + uploads.length);
     }
   });
 
-  // ─── Init ───
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   loadUploads();
 })();

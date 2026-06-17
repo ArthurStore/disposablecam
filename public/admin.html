@@ -116,15 +116,30 @@
               <th>Name</th>
               <th>Gender</th>
               <th>Status</th>
-              <th>Action</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="users-tbody"></tbody>
         </table>
       </div>
     </section>
+
+    <!-- Live Chat Monitor -->
+    <section class="panel chat-monitor-panel">
+      <h2>💬 Live Chat Monitor</h2>
+      <p class="panel-desc">Public messages stream in real time</p>
+      <div id="admin-chat-feed" class="admin-chat-feed"></div>
+    </section>
+
+    <!-- Private Messages Monitor -->
+    <section class="panel chat-monitor-panel">
+      <h2>🔒 Private Messages Monitor</h2>
+      <p class="panel-desc">All direct conversations — admin visibility</p>
+      <div id="admin-private-feed" class="admin-chat-feed private-feed"></div>
+    </section>
   </div>
 
+  <script src="socket.io/socket.io.js"></script>
   <script src="js/admin.js"></script>
 </body>
 </html>

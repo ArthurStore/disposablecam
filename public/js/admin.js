@@ -3,17 +3,20 @@
    (subdir-safe relative paths)
    ═══════════════════════════════════════ */
 
+/* globals io */
+
 (function () {
   'use strict';
 
-  // Admin is served at .../admin (no trailing slash). Compute the dir.
   const BASE = (function () {
     const p = window.location.pathname.replace(/\/admin\/?$/, '/');
     return p.endsWith('/') ? p : p + '/';
   })();
   const api = (rel) => BASE + 'api/' + rel.replace(/^\//, '');
+  const url = (rel) => BASE + rel.replace(/^\//, '');
 
   let isLoggedIn = false;
+  let adminSocket = null;
 
   const loginScreen = document.getElementById('login-screen');
   const dashboard = document.getElementById('dashboard');
@@ -47,6 +50,8 @@
   const addResult = document.getElementById('add-result');
 
   const usersTbody = document.getElementById('users-tbody');
+  const adminChatFeed = document.getElementById('admin-chat-feed');
+  const adminPrivateFeed = document.getElementById('admin-private-feed');
 
   pinSubmit.addEventListener('click', doLogin);
   pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
@@ -77,6 +82,7 @@
 
   adminLogout.addEventListener('click', () => {
     isLoggedIn = false;
+    if (adminSocket) { adminSocket.disconnect(); adminSocket = null; }
     dashboard.classList.add('hidden');
     loginScreen.classList.remove('hidden');
     pinInput.value = '';
@@ -86,8 +92,70 @@
     loadStats();
     loadSystem();
     loadUsers();
+    loadChatMonitor();
+    loadPrivateMonitor();
+    initAdminSocket();
     setInterval(loadStats, 10000);
     setInterval(loadSystem, 5000);
+  }
+
+  function initAdminSocket() {
+    if (typeof io === 'undefined') return;
+    adminSocket = io({ path: BASE + 'socket.io' });
+    adminSocket.emit('join-admin');
+
+    adminSocket.on('chat-message', (msg) => {
+      appendAdminChatMsg(adminChatFeed, msg, 'public');
+    });
+
+    adminSocket.on('private-message', (msg) => {
+      appendAdminChatMsg(adminPrivateFeed, msg, 'private');
+    });
+  }
+
+  async function loadChatMonitor() {
+    try {
+      const res = await fetch(api('admin/messages'));
+      const messages = await res.json();
+      adminChatFeed.innerHTML = '';
+      messages.forEach((m) => appendAdminChatMsg(adminChatFeed, m, 'public'));
+    } catch (err) {}
+  }
+
+  async function loadPrivateMonitor() {
+    try {
+      const res = await fetch(api('admin/private-messages'));
+      const messages = await res.json();
+      adminPrivateFeed.innerHTML = '';
+      messages.forEach((m) => appendAdminChatMsg(adminPrivateFeed, m, 'private'));
+    } catch (err) {}
+  }
+
+  function appendAdminChatMsg(container, msg, type) {
+    const el = document.createElement('div');
+    el.className = 'admin-chat-msg';
+    const time = new Date(msg.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let header, body = '';
+    if (type === 'public') {
+      header = `<strong>${escapeHtml(msg.fullName)}</strong> <span class="msg-meta">#${escapeHtml(msg.participantNumber)} · ${time}</span>`;
+      body = msg.text ? escapeHtml(msg.text) : '';
+    } else {
+      header = `<strong>${escapeHtml(msg.fromFullName)}</strong> <span class="msg-meta">#${escapeHtml(msg.fromParticipantNumber)} → ${escapeHtml(msg.toFullName)} (#${escapeHtml(msg.toParticipantNumber)}) · ${time}</span>`;
+      body = msg.text ? escapeHtml(msg.text) : '';
+    }
+
+    let mediaHtml = '';
+    if (msg.mediaFilename) {
+      const src = url('uploads/' + msg.mediaFilename);
+      mediaHtml = msg.mediaType === 'video'
+        ? `<div class="admin-msg-media"><video src="${src}" controls preload="metadata" style="max-width:120px;border-radius:6px"></video></div>`
+        : `<div class="admin-msg-media"><img src="${src}" alt="" style="max-width:120px;border-radius:6px" loading="lazy"></div>`;
+    }
+
+    el.innerHTML = `<div class="admin-msg-header">${header}</div>${body ? `<div class="admin-msg-body">${body}</div>` : ''}${mediaHtml}`;
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
   }
 
   async function loadStats() {
@@ -109,10 +177,8 @@
 
       cpuBar.style.width = data.cpu + '%';
       cpuText.textContent = data.cpu + '%';
-
       ramBar.style.width = data.memory.percent + '%';
       ramText.textContent = `${data.memory.percent}% (${formatBytes(data.memory.used)} / ${formatBytes(data.memory.total)})`;
-
       diskBar.style.width = data.disk.percent + '%';
       diskText.textContent = `${data.disk.percent}% (${formatBytes(data.disk.used)} / ${formatBytes(data.disk.total)})`;
 
@@ -192,7 +258,10 @@
           <td>${escapeHtml(u.fullName)}</td>
           <td>${u.gender === 'L' ? '♂ Male' : '♀ Female'}</td>
           <td><span class="${u.isBanned ? 'status-banned' : 'status-active'}">${u.isBanned ? 'Banned' : 'Active'}</span></td>
-          <td><button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button></td>
+          <td class="action-cell">
+            <button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button>
+            <button class="btn-delete" data-id="${u._id}">Delete</button>
+          </td>
         `;
         usersTbody.appendChild(tr);
       });
@@ -202,6 +271,19 @@
           try {
             const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id) + '/ban'), { method: 'PATCH' });
             if (res.ok) loadUsers();
+          } catch (err) {}
+        });
+      });
+
+      usersTbody.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const row = btn.closest('tr');
+          const name = row.children[1].textContent;
+          const num = row.children[0].textContent;
+          if (!confirm(`Delete participant ${name} (#${num})? This revokes their access immediately.`)) return;
+          try {
+            const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id)), { method: 'DELETE' });
+            if (res.ok) { loadUsers(); loadStats(); }
           } catch (err) {}
         });
       });

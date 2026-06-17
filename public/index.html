@@ -14,7 +14,6 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- Desktop redirect (relative — works under any base path like /cam/) -->
   <script>
     (function () {
       var p = window.location.pathname;
@@ -27,14 +26,8 @@
     })();
   </script>
 
-  <!-- Flash overlay -->
-  <div id="flash-overlay"></div>
-
-  <!-- Mechanical shutter overlay -->
-  <div id="shutter-overlay">
-    <div class="shutter-blade shutter-top"></div>
-    <div class="shutter-blade shutter-bottom"></div>
-  </div>
+  <!-- Micro toast overlay (session / notifications) -->
+  <div id="micro-toast" class="micro-toast hidden"></div>
 
   <!-- Registration modal -->
   <div id="registration-modal" class="modal">
@@ -53,77 +46,66 @@
     </div>
   </div>
 
-  <!-- Main app -->
+  <!-- Main app — full-screen camera -->
   <div id="app" class="hidden">
-    <!-- Header / Profile -->
-    <header id="profile-header">
-      <div class="profile-info">
-        <div id="gender-icon" class="gender-icon"></div>
-        <div class="profile-text">
-          <h1 id="user-name"></h1>
-          <span id="user-number"></span>
-        </div>
-      </div>
-      <button id="logout-btn" class="icon-btn" title="Logout" aria-label="Logout">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      </button>
-    </header>
-
-    <!-- Camera Section -->
     <section id="camera-section">
       <div id="viewfinder">
-        <video id="camera-preview" autoplay playsinline muted></video>
+        <div id="zoom-layer">
+          <video id="camera-preview" autoplay playsinline muted></video>
+        </div>
         <canvas id="capture-canvas" class="hidden"></canvas>
 
-        <!-- Top bar: REC + mode + ISO/info -->
+        <!-- Top bar -->
         <div class="vf-top">
-          <div id="recording-indicator" class="hidden">
-            <span class="rec-dot"></span> REC <span id="rec-timer">00:00</span>
+          <div class="profile-chip">
+            <div id="gender-icon" class="gender-icon"></div>
+            <div class="profile-text">
+              <h1 id="user-name"></h1>
+              <span id="user-number"></span>
+            </div>
           </div>
-          <div id="mode-indicator">PHOTO</div>
+          <button id="logout-btn" class="vf-icon-btn" title="Logout" aria-label="Logout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
         </div>
 
-        <!-- Camera info HUD -->
-        <div class="vf-hud">
-          <span id="hud-iso">ISO 400</span>
-          <span class="hud-sep">·</span>
-          <span id="hud-res">—</span>
-          <span class="hud-sep">·</span>
-          <span id="hud-time"></span>
+        <!-- Right toolbar -->
+        <div class="vf-right-tools">
+          <button id="flash-btn" class="vf-tool-btn" title="Flash" aria-label="Flash" data-mode="off">
+            <svg class="flash-icon flash-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <svg class="flash-icon flash-on hidden" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span class="flash-label">Off</span>
+          </button>
+          <button id="mode-toggle-btn" class="vf-tool-btn" title="Photo/Video" aria-label="Switch Mode">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            <span id="mode-indicator">Photo</span>
+          </button>
         </div>
 
-        <!-- Focus reticle (decorative) -->
-        <div class="vf-reticle"><span></span><span></span><span></span><span></span></div>
-
-        <!-- Caption overlay -->
-        <div id="caption-overlay">
-          <input type="text" id="caption-input" placeholder="Add a caption…" maxlength="100">
+        <!-- REC indicator -->
+        <div id="recording-indicator" class="hidden">
+          <span class="rec-dot"></span> REC <span id="rec-timer">00:00</span>
         </div>
-      </div>
 
-      <!-- Camera controls -->
-      <div id="camera-controls">
-        <button id="rotate-btn" class="control-btn" title="Flip Camera" aria-label="Flip Camera">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        </button>
+        <!-- Bottom controls -->
+        <div class="vf-bottom">
+          <button id="gallery-btn" class="vf-side-btn" aria-label="Gallery">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span>Gallery</span>
+          </button>
 
-        <button id="mirror-btn" class="control-btn" title="Mirror Preview" aria-label="Mirror Preview" aria-pressed="false">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M8 7l-4 5 4 5"/><path d="M16 7l4 5-4 5"/></svg>
-        </button>
-
-        <button id="capture-btn" class="capture-btn" aria-label="Capture">
-          <div class="capture-ring">
-            <div class="capture-inner"></div>
+          <div class="vf-shutter-area">
+            <button id="zoom-indicator" class="zoom-pill" aria-label="Reset zoom">1×</button>
+            <button id="capture-btn" class="capture-btn" aria-label="Capture">
+              <div class="capture-inner"></div>
+            </button>
           </div>
-        </button>
 
-        <button id="mode-toggle-btn" class="control-btn" title="Switch Mode" aria-label="Switch Photo/Video Mode">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-        </button>
-
-        <button id="grid-btn" class="control-btn" title="Toggle Grid" aria-label="Toggle Grid" aria-pressed="false">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-        </button>
+          <button id="rotate-btn" class="vf-side-btn" aria-label="Flip Camera">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span>Flip</span>
+          </button>
+        </div>
       </div>
 
       <!-- Upload progress -->
@@ -133,19 +115,7 @@
       </div>
     </section>
 
-    <!-- Gallery Section -->
-    <section id="gallery-section">
-      <div class="section-header" id="gallery-toggle">
-        <h2>My Gallery</h2>
-        <span class="toggle-arrow">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </span>
-      </div>
-      <div id="gallery-grid" class="gallery-grid"></div>
-      <p id="gallery-empty" class="empty-text hidden">No moments captured yet</p>
-    </section>
-
-    <!-- Chat toggle button -->
+    <!-- Chat FAB -->
     <button id="chat-toggle-btn" class="chat-fab" aria-label="Open Chat">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       <span id="chat-badge" class="chat-badge hidden">0</span>
@@ -154,19 +124,65 @@
     <!-- Chat panel -->
     <div id="chat-panel" class="chat-panel hidden">
       <div class="chat-header">
-        <h3>Live Chat</h3>
+        <div class="chat-tabs">
+          <button id="chat-tab-public" class="chat-tab active">Public</button>
+          <button id="chat-tab-private" class="chat-tab">Private</button>
+        </div>
         <button id="chat-close-btn" class="icon-btn" aria-label="Close Chat">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
+      <div id="private-recipient-bar" class="private-recipient-bar hidden">
+        <label for="private-recipient">Message to:</label>
+        <select id="private-recipient"><option value="">Select participant…</option></select>
+      </div>
       <div id="chat-messages" class="chat-messages"></div>
+      <div id="chat-upload-error" class="chat-upload-error hidden"></div>
       <div class="chat-input-bar">
+        <button id="chat-attach-btn" class="btn-attach" aria-label="Attach media">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <input type="file" id="chat-file-input" accept="image/*,video/*" class="hidden">
         <input type="text" id="chat-input" placeholder="Type a message…" maxlength="500">
         <button id="chat-send-btn" class="btn-send" aria-label="Send">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
     </div>
+  </div>
+
+  <!-- Review screen (post-capture) -->
+  <div id="review-screen" class="review-screen hidden">
+    <div class="review-preview-wrap">
+      <div id="review-media" class="review-media"></div>
+      <div id="review-caption-bar" class="review-caption-bar bottom">
+        <span id="review-caption-text"></span>
+      </div>
+    </div>
+    <div class="review-controls">
+      <input type="text" id="review-caption-input" placeholder="Add a caption…" maxlength="100">
+      <div class="review-caption-pos">
+        <span>Caption position:</span>
+        <button id="caption-pos-top" class="pos-btn">Top</button>
+        <button id="caption-pos-bottom" class="pos-btn active">Bottom</button>
+      </div>
+      <div class="review-actions">
+        <button id="review-discard-btn" class="review-btn discard">Discard</button>
+        <button id="review-upload-btn" class="review-btn upload">Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gallery modal -->
+  <div id="gallery-modal" class="gallery-modal hidden">
+    <div class="gallery-modal-header">
+      <h2>My Gallery</h2>
+      <button id="gallery-modal-close" class="icon-btn" aria-label="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="gallery-grid" class="gallery-grid"></div>
+    <p id="gallery-empty" class="empty-text hidden">No moments captured yet</p>
   </div>
 
   <!-- Media preview modal -->
@@ -179,7 +195,6 @@
     </div>
   </div>
 
-  <!-- Socket.IO served by the same origin/base path -->
   <script src="socket.io/socket.io.js"></script>
   <script src="js/app.js"></script>
   <script src="js/chat.js"></script>

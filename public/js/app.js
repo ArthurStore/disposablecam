@@ -6,9 +6,6 @@
 (function () {
   'use strict';
 
-  // Resolve the directory the page is served from (e.g. "/" or "/cam/").
-  // We use this to build same-origin URLs without leading slashes,
-  // so the app works at root or under /cam.
   const BASE = (function () {
     const p = window.location.pathname;
     return p.endsWith('/') ? p : p.replace(/\/[^/]*$/, '/');
@@ -16,7 +13,6 @@
   const api = (rel) => BASE + 'api/' + rel.replace(/^\//, '');
   const url = (rel) => BASE + rel.replace(/^\//, '');
 
-  // ─── State ───
   let currentUser = null;
   let currentFacingMode = 'environment';
   let mediaStream = null;
@@ -25,13 +21,17 @@
   let mediaRecorder = null;
   let recordedChunks = [];
   let longPressTimer = null;
-  let galleryOpen = true;
-  let mirrorOverride = null; // null = auto (front camera), true/false = forced
+  let mirrorOverride = null;
   let recStart = 0;
   let recTimerId = null;
-  let hudTimerId = null;
+  let flashMode = 'off'; // off | on | auto
+  let zoomLevel = 1;
+  let lastTapTime = 0;
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
+  let pendingCapture = null; // { blob, filename, mimetype, isVideo }
+  let captionPosition = 'bottom';
 
-  // ─── DOM refs ───
   const registrationModal = document.getElementById('registration-modal');
   const participantInput = document.getElementById('participant-input');
   const registerBtn = document.getElementById('register-btn');
@@ -42,67 +42,124 @@
   const genderIcon = document.getElementById('gender-icon');
   const logoutBtn = document.getElementById('logout-btn');
   const video = document.getElementById('camera-preview');
+  const zoomLayer = document.getElementById('zoom-layer');
   const canvas = document.getElementById('capture-canvas');
   const captureBtn = document.getElementById('capture-btn');
   const rotateBtn = document.getElementById('rotate-btn');
-  const mirrorBtn = document.getElementById('mirror-btn');
-  const gridBtn = document.getElementById('grid-btn');
+  const flashBtn = document.getElementById('flash-btn');
   const modeToggleBtn = document.getElementById('mode-toggle-btn');
   const modeIndicator = document.getElementById('mode-indicator');
   const recordingIndicator = document.getElementById('recording-indicator');
   const recTimer = document.getElementById('rec-timer');
-  const captionInput = document.getElementById('caption-input');
-  const flashOverlay = document.getElementById('flash-overlay');
-  const shutterOverlay = document.getElementById('shutter-overlay');
-  const uploadProgress = document.getElementById('upload-progress');
-  const progressFill = document.querySelector('.progress-fill');
+  const zoomIndicator = document.getElementById('zoom-indicator');
+  const galleryBtn = document.getElementById('gallery-btn');
+  const galleryModal = document.getElementById('gallery-modal');
+  const galleryModalClose = document.getElementById('gallery-modal-close');
   const galleryGrid = document.getElementById('gallery-grid');
   const galleryEmpty = document.getElementById('gallery-empty');
-  const galleryToggle = document.getElementById('gallery-toggle');
-  const toggleArrow = document.querySelector('.toggle-arrow');
+  const uploadProgress = document.getElementById('upload-progress');
+  const progressFill = document.querySelector('.progress-fill');
   const mediaModal = document.getElementById('media-modal');
   const mediaModalBody = document.getElementById('media-modal-body');
   const mediaModalClose = document.getElementById('media-modal-close');
   const viewfinder = document.getElementById('viewfinder');
-  const hudRes = document.getElementById('hud-res');
-  const hudTime = document.getElementById('hud-time');
+  const reviewScreen = document.getElementById('review-screen');
+  const reviewMedia = document.getElementById('review-media');
+  const reviewCaptionInput = document.getElementById('review-caption-input');
+  const reviewCaptionBar = document.getElementById('review-caption-bar');
+  const reviewCaptionText = document.getElementById('review-caption-text');
+  const captionPosTop = document.getElementById('caption-pos-top');
+  const captionPosBottom = document.getElementById('caption-pos-bottom');
+  const reviewDiscardBtn = document.getElementById('review-discard-btn');
+  const reviewUploadBtn = document.getElementById('review-upload-btn');
+  const microToast = document.getElementById('micro-toast');
 
-  // ─── Audio ───
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let audioCtx = null;
 
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    return audioCtx;
+  }
+
+  // Classic mechanical shutter — dual-click with noise burst
   function playShutterSound() {
     try {
-      const ctx = new AudioCtx();
-      const dur = 0.15;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(800, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + dur);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + dur);
+      const ctx = getAudioCtx();
+      const t = ctx.currentTime;
+
+      function click(at, freq, dur, vol) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = freq;
+        filter.Q.value = 2;
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, at);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.3, at + dur);
+        gain.gain.setValueAtTime(vol, at);
+        gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(at);
+        osc.stop(at + dur);
+      }
+
+      // Shutter blade snap (two rapid clicks)
+      click(t, 2800, 0.04, 0.35);
+      click(t + 0.045, 1800, 0.06, 0.28);
+      // Spring/mirror return
+      click(t + 0.12, 900, 0.08, 0.12);
+
+      // White noise burst for mechanical texture
+      const bufSize = ctx.sampleRate * 0.05;
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.18, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      noise.connect(nGain);
+      nGain.connect(ctx.destination);
+      noise.start(t);
     } catch (e) {}
   }
 
   function playBeepSound() {
     try {
-      const ctx = new AudioCtx();
+      const ctx = getAudioCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.value = 1200;
       gain.gain.setValueAtTime(0.2, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
     } catch (e) {}
   }
 
   function vibrate(pattern) {
     if (navigator.vibrate) navigator.vibrate(pattern);
   }
+
+  function showMicroToast(msg, duration) {
+    microToast.textContent = msg;
+    microToast.classList.remove('hidden');
+    microToast.classList.add('show');
+    setTimeout(() => {
+      microToast.classList.remove('show');
+      setTimeout(() => microToast.classList.add('hidden'), 350);
+    }, duration || 2500);
+  }
+
+  window.showMicroToast = showMicroToast;
 
   // ═══ Registration ═══
   function checkSession() {
@@ -133,9 +190,7 @@
         body: JSON.stringify({ participantNumber: num })
       });
       const data = await res.json();
-
       if (!res.ok) { registerError.textContent = data.error || 'Validation failed'; return; }
-
       currentUser = data;
       localStorage.setItem('dc_user', JSON.stringify(data));
       showApp();
@@ -156,12 +211,26 @@
 
     const isMale = currentUser.gender === 'L';
     genderIcon.className = `gender-icon ${isMale ? 'male' : 'female'}`;
-    genderIcon.innerHTML = `<img src="${url('images/' + (isMale ? 'male' : 'female') + '-icon.svg')}" alt="${isMale ? 'Male' : 'Female'}">`;
+    genderIcon.innerHTML = `<img src="${url('images/' + (isMale ? 'male' : 'female') + '-icon.svg')}" alt="">`;
 
     initCamera();
-    loadGallery();
-    startHud();
+    setupZoomGestures();
+    listenForRevocation();
     if (typeof initChat === 'function') initChat(currentUser);
+  }
+
+  function listenForRevocation() {
+    if (typeof io === 'undefined') return;
+    const socket = io({ path: BASE + 'socket.io' });
+    socket.on('participant-revoked', (data) => {
+      if (data.participantNumber === currentUser.participantNumber) {
+        showMicroToast('Session ended — access revoked');
+        setTimeout(() => {
+          localStorage.removeItem('dc_user');
+          location.reload();
+        }, 2000);
+      }
+    });
   }
 
   logoutBtn.addEventListener('click', () => {
@@ -187,13 +256,9 @@
 
       mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = mediaStream;
-
       applyMirror();
-
-      // Update HUD resolution once metadata loads
-      video.onloadedmetadata = () => {
-        hudRes.textContent = `${video.videoWidth}×${video.videoHeight}`;
-      };
+      applyFlash();
+      resetZoom();
     } catch (err) {
       console.error('Camera error:', err);
       alert('Unable to access camera. Please grant permission and try again.');
@@ -204,48 +269,112 @@
     const auto = currentFacingMode === 'user';
     const on = mirrorOverride === null ? auto : mirrorOverride;
     video.classList.toggle('mirrored', on);
-    mirrorBtn.setAttribute('aria-pressed', String(on));
-    mirrorBtn.classList.toggle('active', on);
   }
+
+  async function applyFlash() {
+    if (!mediaStream) return;
+    const track = mediaStream.getVideoTracks()[0];
+    if (!track) return;
+    const torchOn = flashMode === 'on';
+    try {
+      await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    } catch (e) { /* torch not supported */ }
+  }
+
+  flashBtn.addEventListener('click', () => {
+    vibrate(20);
+    const modes = ['off', 'on', 'auto'];
+    flashMode = modes[(modes.indexOf(flashMode) + 1) % modes.length];
+    flashBtn.dataset.mode = flashMode;
+    flashBtn.querySelector('.flash-label').textContent =
+      flashMode.charAt(0).toUpperCase() + flashMode.slice(1);
+    flashBtn.querySelector('.flash-off').classList.toggle('hidden', flashMode === 'on');
+    flashBtn.querySelector('.flash-on').classList.toggle('hidden', flashMode !== 'on');
+    if (flashMode === 'on') applyFlash();
+    else if (flashMode === 'off') applyFlash();
+  });
 
   rotateBtn.addEventListener('click', () => {
     vibrate(30);
     currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-    mirrorOverride = null; // re-enable auto mirror behavior on rotate
+    mirrorOverride = null;
     initCamera();
   });
 
-  mirrorBtn.addEventListener('click', () => {
-    vibrate(20);
-    const currentlyOn = video.classList.contains('mirrored');
-    mirrorOverride = !currentlyOn;
-    applyMirror();
-  });
-
-  gridBtn.addEventListener('click', () => {
-    vibrate(20);
-    const on = viewfinder.classList.toggle('show-grid');
-    gridBtn.setAttribute('aria-pressed', String(on));
-    gridBtn.classList.toggle('active', on);
-  });
-
-  // Mode toggle (photo/video)
   modeToggleBtn.addEventListener('click', () => {
     vibrate(30);
     isVideoMode = !isVideoMode;
-    modeIndicator.textContent = isVideoMode ? 'VIDEO' : 'PHOTO';
-    modeIndicator.classList.toggle('video', isVideoMode);
-
-    if (isVideoMode) {
-      captureBtn.classList.add('video-mode');
-    } else {
-      captureBtn.classList.remove('video-mode');
-      if (isRecording) stopRecording();
-    }
+    modeIndicator.textContent = isVideoMode ? 'Video' : 'Photo';
+    captureBtn.classList.toggle('video-mode', isVideoMode);
+    if (!isVideoMode && isRecording) stopRecording();
     initCamera();
   });
 
-  // ─── Capture ───
+  // ═══ Zoom ═══
+  function setZoom(level) {
+    zoomLevel = Math.min(Math.max(level, 1), 4);
+    zoomLayer.style.transform = `scale(${zoomLevel})`;
+    zoomIndicator.textContent = zoomLevel === 1 ? '1×' : zoomLevel.toFixed(1) + '×';
+  }
+
+  function resetZoom() {
+    setZoom(1);
+  }
+
+  zoomIndicator.addEventListener('click', () => {
+    vibrate(15);
+    resetZoom();
+  });
+
+  function setupZoomGestures() {
+    viewfinder.addEventListener('touchstart', onTouchStart, { passive: false });
+    viewfinder.addEventListener('touchmove', onTouchMove, { passive: false });
+    viewfinder.addEventListener('touchend', onTouchEnd);
+
+    viewfinder.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      vibrate(20);
+      setZoom(zoomLevel > 1.1 ? 1 : 2);
+    });
+  }
+
+  function touchDist(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  function onTouchStart(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      pinchStartDist = touchDist(e.touches);
+      pinchStartZoom = zoomLevel;
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        e.preventDefault();
+        setZoom(zoomLevel > 1.1 ? 1 : 2);
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+      }
+    }
+  }
+
+  function onTouchMove(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = touchDist(e.touches);
+      const scale = dist / pinchStartDist;
+      setZoom(pinchStartZoom * scale);
+    }
+  }
+
+  function onTouchEnd() {
+    pinchStartDist = 0;
+  }
+
+  // ═══ Capture ═══
   captureBtn.addEventListener('click', () => {
     if (isVideoMode) {
       isRecording ? stopRecording() : startRecording();
@@ -258,8 +387,8 @@
     if (isVideoMode) return;
     longPressTimer = setTimeout(() => {
       isVideoMode = true;
-      modeIndicator.textContent = 'VIDEO';
-      modeIndicator.classList.add('video');
+      modeIndicator.textContent = 'Video';
+      captureBtn.classList.add('video-mode');
       initCamera().then(() => startRecording());
     }, 800);
   }, { passive: true });
@@ -267,21 +396,26 @@
   captureBtn.addEventListener('touchend', () => clearTimeout(longPressTimer));
   captureBtn.addEventListener('touchcancel', () => clearTimeout(longPressTimer));
 
-  function takePhoto() {
+  async function takePhoto() {
     vibrate(50);
     playShutterSound();
 
-    flashOverlay.classList.add('active');
-    setTimeout(() => flashOverlay.classList.remove('active'), 120);
-
-    shutterOverlay.classList.add('active');
-    setTimeout(() => shutterOverlay.classList.remove('active'), 420);
+    if (flashMode === 'on' || flashMode === 'auto') {
+      await applyFlash();
+      if (flashMode === 'auto') {
+        setTimeout(() => {
+          flashMode = 'off';
+          flashBtn.dataset.mode = 'off';
+          flashBtn.querySelector('.flash-label').textContent = 'Off';
+          applyFlash();
+        }, 300);
+      }
+    }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
 
-    // Mirror saved photo only when the live preview is mirrored
     if (video.classList.contains('mirrored')) {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
@@ -289,7 +423,7 @@
     ctx.drawImage(video, 0, 0);
 
     canvas.toBlob((blob) => {
-      if (blob) uploadMedia(blob, 'photo.jpg', 'image/jpeg');
+      if (blob) showReviewScreen(blob, 'photo.jpg', 'image/jpeg', false);
     }, 'image/jpeg', 0.92);
   }
 
@@ -312,8 +446,8 @@
 
     mediaRecorder.onstop = () => {
       const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
-      uploadMedia(blob, 'video.webm', blob.type);
       recordedChunks = [];
+      showReviewScreen(blob, 'video.webm', blob.type, true);
     };
 
     mediaRecorder.start(100);
@@ -324,9 +458,7 @@
     recTimer.textContent = '00:00';
     recTimerId = setInterval(() => {
       const s = Math.floor((Date.now() - recStart) / 1000);
-      const mm = String(Math.floor(s / 60)).padStart(2, '0');
-      const ss = String(s % 60).padStart(2, '0');
-      recTimer.textContent = `${mm}:${ss}`;
+      recTimer.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
     }, 500);
   }
 
@@ -339,8 +471,75 @@
     vibrate(100);
   }
 
+  // ═══ Review Screen ═══
+  function showReviewScreen(blob, filename, mimetype, isVideo) {
+    pendingCapture = { blob, filename, mimetype, isVideo };
+    captionPosition = 'bottom';
+    reviewCaptionInput.value = '';
+    reviewCaptionText.textContent = '';
+    reviewCaptionBar.className = 'review-caption-bar bottom';
+    captionPosTop.classList.remove('active');
+    captionPosBottom.classList.add('active');
+
+    reviewMedia.innerHTML = '';
+    const objUrl = URL.createObjectURL(blob);
+    if (isVideo) {
+      const v = document.createElement('video');
+      v.src = objUrl;
+      v.controls = true;
+      v.autoplay = true;
+      v.muted = true;
+      v.playsInline = true;
+      v.loop = true;
+      reviewMedia.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.src = objUrl;
+      reviewMedia.appendChild(img);
+    }
+
+    reviewScreen.classList.remove('hidden');
+    appEl.classList.add('hidden');
+  }
+
+  reviewCaptionInput.addEventListener('input', () => {
+    reviewCaptionText.textContent = reviewCaptionInput.value.trim();
+  });
+
+  captionPosTop.addEventListener('click', () => {
+    captionPosition = 'top';
+    reviewCaptionBar.className = 'review-caption-bar top';
+    captionPosTop.classList.add('active');
+    captionPosBottom.classList.remove('active');
+  });
+
+  captionPosBottom.addEventListener('click', () => {
+    captionPosition = 'bottom';
+    reviewCaptionBar.className = 'review-caption-bar bottom';
+    captionPosBottom.classList.add('active');
+    captionPosTop.classList.remove('active');
+  });
+
+  reviewDiscardBtn.addEventListener('click', () => {
+    pendingCapture = null;
+    reviewMedia.innerHTML = '';
+    reviewScreen.classList.add('hidden');
+    appEl.classList.remove('hidden');
+  });
+
+  reviewUploadBtn.addEventListener('click', () => {
+    if (!pendingCapture) return;
+    const { blob, filename, mimetype } = pendingCapture;
+    const caption = reviewCaptionInput.value.trim();
+    reviewScreen.classList.add('hidden');
+    appEl.classList.remove('hidden');
+    reviewMedia.innerHTML = '';
+    uploadMedia(blob, filename, mimetype, caption, captionPosition);
+    pendingCapture = null;
+  });
+
   // ═══ Upload ═══
-  async function uploadMedia(blob, filename, mimetype) {
+  async function uploadMedia(blob, filename, mimetype, caption, capPos) {
     uploadProgress.classList.remove('hidden');
     progressFill.style.width = '30%';
 
@@ -349,7 +548,8 @@
     formData.append('participantNumber', currentUser.participantNumber);
     formData.append('fullName', currentUser.fullName);
     formData.append('gender', currentUser.gender);
-    formData.append('caption', captionInput.value.trim());
+    formData.append('caption', caption || '');
+    formData.append('captionPosition', capPos || 'bottom');
 
     try {
       progressFill.style.width = '60%';
@@ -360,36 +560,50 @@
       if (res.ok) {
         vibrate([50, 30, 50]);
         progressFill.style.width = '100%';
-        captionInput.value = '';
-        loadGallery();
         setTimeout(() => {
           uploadProgress.classList.add('hidden');
           progressFill.style.width = '0';
         }, 800);
       } else {
-        alert(data.error || 'Upload failed');
+        showMicroToast(data.error || 'Upload failed');
         uploadProgress.classList.add('hidden');
         progressFill.style.width = '0';
       }
     } catch (err) {
-      alert('Upload failed. Check your connection.');
+      showMicroToast('Upload failed — check your connection');
       uploadProgress.classList.add('hidden');
       progressFill.style.width = '0';
     }
   }
 
-  // ═══ Gallery ═══
+  // ═══ Gallery Modal ═══
   const TRASH_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
+
+  galleryBtn.addEventListener('click', () => {
+    vibrate(20);
+    loadGallery();
+    galleryModal.classList.remove('hidden');
+  });
+
+  galleryModalClose.addEventListener('click', () => {
+    galleryModal.classList.add('hidden');
+  });
+
+  galleryModal.addEventListener('click', (e) => {
+    if (e.target === galleryModal) galleryModal.classList.add('hidden');
+  });
 
   async function loadGallery() {
     if (!currentUser) return;
     try {
       const res = await fetch(api('gallery/' + encodeURIComponent(currentUser.participantNumber)));
       const photos = await res.json();
-
       galleryGrid.innerHTML = '';
 
-      if (!photos.length) { galleryEmpty.classList.remove('hidden'); return; }
+      if (!photos.length) {
+        galleryEmpty.classList.remove('hidden');
+        return;
+      }
       galleryEmpty.classList.add('hidden');
 
       photos.forEach((p) => {
@@ -397,10 +611,7 @@
         item.className = 'gallery-item';
 
         if (p.fileType === 'video') {
-          item.innerHTML = `
-            <video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video>
-            <span class="video-badge">▶</span>
-          `;
+          item.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video><span class="video-badge">▶</span>`;
         } else {
           item.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="Photo" loading="lazy">`;
         }
@@ -409,15 +620,14 @@
           item.innerHTML += `<span class="item-caption">${escapeHtml(p.caption)}</span>`;
         }
 
-        item.innerHTML += `<button class="delete-btn" data-id="${p._id}" title="Delete" aria-label="Delete">${TRASH_SVG}</button>`;
+        item.innerHTML += `<button class="delete-btn" data-id="${p._id}" title="Delete">${TRASH_SVG}</button>`;
 
         item.addEventListener('click', (e) => {
           if (e.target.closest('.delete-btn')) return;
           openMediaModal(p);
         });
 
-        const deleteBtn = item.querySelector('.delete-btn');
-        deleteBtn.addEventListener('click', (e) => {
+        item.querySelector('.delete-btn').addEventListener('click', (e) => {
           e.stopPropagation();
           deleteMedia(p._id);
         });
@@ -434,22 +644,16 @@
     try {
       const res = await fetch(api('media/' + encodeURIComponent(id)), { method: 'DELETE' });
       if (res.ok) { vibrate(50); loadGallery(); }
-    } catch (err) { alert('Delete failed'); }
+    } catch (err) { showMicroToast('Delete failed'); }
   }
-
-  galleryToggle.addEventListener('click', () => {
-    galleryOpen = !galleryOpen;
-    galleryGrid.style.display = galleryOpen ? 'grid' : 'none';
-    galleryEmpty.style.display = galleryOpen && galleryGrid.children.length === 0 ? 'block' : 'none';
-    toggleArrow.classList.toggle('collapsed', !galleryOpen);
-  });
 
   function openMediaModal(p) {
     mediaModalBody.innerHTML = '';
     if (p.fileType === 'video') {
       const v = document.createElement('video');
       v.src = url('uploads/' + p.filename);
-      v.controls = true; v.autoplay = true;
+      v.controls = true;
+      v.autoplay = true;
       mediaModalBody.appendChild(v);
     } else {
       const img = document.createElement('img');
@@ -470,17 +674,6 @@
       mediaModalBody.innerHTML = '';
     }
   });
-
-  // ─── HUD clock ───
-  function startHud() {
-    function tick() {
-      const d = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      hudTime.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
-    tick();
-    hudTimerId = setInterval(tick, 30000);
-  }
 
   function escapeHtml(str) {
     const div = document.createElement('div');

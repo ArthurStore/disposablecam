@@ -36,6 +36,11 @@ const photoSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  captionPosition: {
+    type: String,
+    enum: ['top', 'bottom'],
+    default: 'bottom'
+  },
   fileSize: {
     type: Number,
     default: 0
