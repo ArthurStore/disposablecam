@@ -16,7 +16,7 @@
   let currentUser = null;
   let currentFacingMode = 'environment';
   let mediaStream = null;
-  let currentMode = 'photo'; // photo | video | timelapse
+  let currentMode = 'photo';
   let isRecording = false;
   let mediaRecorder = null;
   let recordedChunks = [];
@@ -31,18 +31,18 @@
   let pinchStartDist = 0;
   let pinchStartZoom = 1;
   let pendingCapture = null;
-  let captionPosition = 'center';
 
   // Settings state
   let gridEnabled = false;
   let timerSeconds = 0;
   let continuousMode = false;
-  let tlInterval = 2; // timelapse interval in seconds
+  let tlInterval = 2;
   let timerActive = false;
   let timerCountdownId = null;
 
-  // Draft queue
-  let draftQueue = []; // [{blob, filename, mimetype, objUrl}]
+  // Draft queue — each item: {blob, filename, mimetype, objUrl, caption, snapBarY}
+  let draftQueue = [];
+  let draftViewIndex = 0;
 
   // Moments counter
   let momentsCaptured = 0;
@@ -53,20 +53,16 @@
   let tlCapturing = false;
   let tlFrameCount = 0;
 
-  // Gyro state
-  let gyroLandscape = false;
+  // Snap caption bar drag state (single review)
+  let snapBarDragging = false;
+  let snapBarStartY = 0;
+  let snapBarStartTop = 0;
+  let snapBarY = 50; // percent
 
-  // Snap caption drag state
-  let snapDragActive = false;
-  let snapDragStartX = 0;
-  let snapDragStartY = 0;
-  let snapElStartX = 0;
-  let snapElStartY = 0;
-  let snapRotation = 0;
-  let snapPinchStart = 0;
-  let snapPinchRotStart = 0;
-  let snapCurrentX = 50;
-  let snapCurrentY = 50;
+  // Draft snap bar drag state
+  let draftSnapDragging = false;
+  let draftSnapStartY = 0;
+  let draftSnapStartTop = 0;
 
   // ─── DOM refs ───
   const registrationModal = document.getElementById('registration-modal');
@@ -83,9 +79,9 @@
   const zoomLayer = document.getElementById('zoom-layer');
   const canvas = document.getElementById('capture-canvas');
   const captureBtn = document.getElementById('capture-btn');
-  const gyroCaptureBtn = document.getElementById('gyro-capture-btn');
-  const gyroShutter = document.getElementById('gyro-shutter');
+  const captureBtnLs = document.getElementById('capture-btn-ls');
   const rotateBtn = document.getElementById('rotate-btn');
+  const rotateBtnLs = document.getElementById('rotate-btn-ls');
   const flashBtn = document.getElementById('flash-btn');
   const recordingIndicator = document.getElementById('recording-indicator');
   const recTimer = document.getElementById('rec-timer');
@@ -116,8 +112,6 @@
   const gridOverlay = document.getElementById('grid-overlay');
   const momentsCounter = document.getElementById('moments-counter');
   const momentsCount = document.getElementById('moments-count');
-  const momentsTotalEl = document.getElementById('moments-total');
-  const momentsRow = document.getElementById('moments-row');
   const settingsPanel = document.getElementById('settings-panel');
   const settingsClose = document.getElementById('settings-close');
   const gridToggle = document.getElementById('grid-toggle');
@@ -126,12 +120,20 @@
   const draftCount = document.getElementById('draft-count');
   const draftReviewPanel = document.getElementById('draft-review-panel');
   const draftPanelClose = document.getElementById('draft-panel-close');
-  const draftList = document.getElementById('draft-list');
   const draftPanelCount = document.getElementById('draft-panel-count');
   const draftDiscardAll = document.getElementById('draft-discard-all');
   const draftUploadAll = document.getElementById('draft-upload-all');
-  const snapCaptionLayer = document.getElementById('snap-caption-layer');
-  const snapCaptionEl = document.getElementById('snap-caption-el');
+  const draftViewerMedia = document.getElementById('draft-viewer-media');
+  const draftSnapBar = document.getElementById('draft-snap-bar');
+  const draftSnapText = document.getElementById('draft-snap-text');
+  const draftViewerHint = document.getElementById('draft-viewer-hint');
+  const draftPrev = document.getElementById('draft-prev');
+  const draftNext = document.getElementById('draft-next');
+  const draftItemCounter = document.getElementById('draft-item-counter');
+  const draftDeleteCurrent = document.getElementById('draft-delete-current');
+  const draftCaptionInput = document.getElementById('draft-caption-input');
+  const draftUploadCurrent = document.getElementById('draft-upload-current');
+  const snapCaptionBar = document.getElementById('snap-caption-bar');
   const snapCaptionText = document.getElementById('snap-caption-text');
   const snapTapHint = document.getElementById('snap-tap-hint');
 
@@ -270,8 +272,8 @@
     momentsCount.textContent = momentsCaptured;
     if (momentsCaptured > 0) {
       momentsCounter.classList.remove('hidden');
-      if (momentsTotalEl) momentsTotalEl.textContent = momentsCaptured;
-      if (momentsRow) momentsRow.classList.remove('hidden');
+    } else {
+      momentsCounter.classList.add('hidden');
     }
   }
 
@@ -340,7 +342,6 @@
     genderIcon.innerHTML = `<img src="${url('images/' + (isMale ? 'male' : 'female') + '-icon.svg')}" alt="">`;
     initCamera();
     setupZoomGestures();
-    setupGyro();
     listenForRevocation();
     refreshGalleryThumb();
     if (typeof initChat === 'function') initChat(currentUser);
@@ -423,110 +424,128 @@
     });
   });
 
-  // ─── Modes Bar ───
-  document.querySelectorAll('.mode-pill').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      vibrate(20);
-      const newMode = btn.dataset.mode;
-      if (newMode === currentMode) return;
-
-      // Stop any current recording/timelapse
-      if (isRecording) stopRecording();
-      if (tlCapturing) stopTimelapse();
-
-      currentMode = newMode;
-      document.querySelectorAll('.mode-pill').forEach((b) => b.classList.toggle('active', b === btn));
-      captureBtn.classList.toggle('video-mode', currentMode === 'video');
-      updateCaptureAppearance();
-      initCamera();
-      showMicroToast(newMode.toUpperCase() + ' mode');
-    });
-  });
-
-  function updateCaptureAppearance() {
-    captureBtn.classList.remove('video-mode', 'timelapse-mode');
-    if (currentMode === 'video') captureBtn.classList.add('video-mode');
-    if (currentMode === 'timelapse') captureBtn.classList.add('video-mode');
+  // ─── Modes Bar (portrait + landscape sidebar) ───
+  function handleModeChange(newMode, allModePills) {
+    vibrate(20);
+    if (newMode === currentMode) return;
+    if (isRecording) stopRecording();
+    if (tlCapturing) stopTimelapse();
+    currentMode = newMode;
+    // Sync all mode pills (portrait + landscape)
+    document.querySelectorAll('.mode-pill').forEach((b) => b.classList.toggle('active', b.dataset.mode === newMode));
+    captureBtn.classList.toggle('video-mode', currentMode === 'video' || currentMode === 'timelapse');
+    if (captureBtnLs) captureBtnLs.classList.toggle('video-mode', currentMode === 'video' || currentMode === 'timelapse');
+    initCamera(false);
+    showMicroToast(newMode.toUpperCase() + ' mode');
   }
 
+  document.querySelectorAll('.mode-pill').forEach((btn) => {
+    btn.addEventListener('click', () => handleModeChange(btn.dataset.mode));
+  });
+
   // ─── Zoom Presets ───
+  function handleZoomPreset(preset) {
+    vibrate(15);
+    currentZoomPreset = preset;
+    // Sync all zoom preset buttons
+    document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === preset));
+    setZoomPreset(preset);
+  }
+
   document.querySelectorAll('.zoom-preset-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      vibrate(15);
-      const preset = parseFloat(btn.dataset.zoom);
-      document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', b === btn));
-      setZoomPreset(preset);
-    });
+    btn.addEventListener('click', () => handleZoomPreset(parseFloat(btn.dataset.zoom)));
   });
 
   async function setZoomPreset(preset) {
-    currentZoomPreset = preset;
     if (preset === 0.5) {
-      // Try to get ultra-wide camera
-      await initCamera(true);
+      await tryUltraWideCamera();
     } else {
-      if (currentZoomPreset !== 0.5 || !mediaStream) {
-        // Already on main camera
-      }
-      if (preset <= 1) {
+      if (currentZoomPreset === 0.5) {
+        // Switch back from ultrawide to main camera
         await initCamera(false);
-        setZoom(preset < 1 ? 1 : preset);
-      } else {
-        setZoom(preset);
       }
+      setZoom(preset);
     }
   }
 
   // ─── Camera ───
-  async function initCamera(requestUltraWide) {
+  async function tryUltraWideCamera() {
     try {
       if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
 
-      let videoConstraints = {
-        facingMode: currentFacingMode,
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
+      // Try native ultra-wide via facingMode + zoom constraint
+      const constraints = {
+        video: {
+          facingMode: currentFacingMode,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          zoom: { ideal: 0.5 }
+        },
+        audio: currentMode === 'video'
       };
 
-      if (requestUltraWide && currentFacingMode === 'environment') {
-        // Try to get ultra-wide (0.5x) camera
-        videoConstraints = {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        mediaStream = stream;
+        video.srcObject = stream;
+        // Apply native zoom if supported
+        const track = stream.getVideoTracks()[0];
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.zoom && caps.zoom.min <= 0.6) {
+          try { await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }); } catch (e) {}
+        }
+        applyMirror();
+        applyFlash();
+        zoomLevel = 1; // Reset CSS zoom — native handles it
+        zoomLayer.style.transform = 'scale(1)';
+        return;
+      } catch (e) {}
+
+      // Fallback: enumerate devices and pick widest angle
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      if (videoDevices.length > 1 && currentFacingMode === 'environment') {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: videoDevices[videoDevices.length - 1].deviceId }, width: { ideal: 1920 } },
+          audio: currentMode === 'video'
+        });
+        mediaStream = stream;
+        video.srcObject = stream;
+        applyMirror();
+        zoomLevel = 1;
+        zoomLayer.style.transform = 'scale(1)';
+        return;
+      }
+
+      // CSS fallback — zoom out slightly but clamp so no black borders
+      await initCamera(false);
+      setZoom(0.9); // closest we can get without black borders
+      showMicroToast('Ultra-wide not available on this device');
+    } catch (err) {
+      await initCamera(false);
+    }
+  }
+
+  async function initCamera(requestUltraWide) {
+    try {
+      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      const constraints = {
+        video: {
           facingMode: currentFacingMode,
           width: { ideal: 1920 },
           height: { ideal: 1080 }
-        };
-        // Some devices expose ultra-wide as a separate device
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter(d => d.kind === 'videoinput');
-          if (videoDevices.length > 1) {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: videoDevices[videoDevices.length - 1].deviceId, width: { ideal: 1920 } },
-              audio: currentMode === 'video'
-            });
-            mediaStream = stream;
-            video.srcObject = stream;
-            applyMirror();
-            return;
-          }
-        } catch (e) {}
-        // Fallback: zoom out (CSS scale <1)
-        zoomLayer.style.transform = 'scale(0.75)';
-        zoomIndicator.textContent = '0.5×';
-      } else {
-        const constraints = {
-          video: videoConstraints,
-          audio: currentMode === 'video'
-        };
-        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = mediaStream;
-        applyMirror();
-        applyFlash();
-        if (requestUltraWide === false || currentZoomPreset !== 0.5) resetZoom();
-      }
+        },
+        audio: currentMode === 'video'
+      };
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = mediaStream;
+      applyMirror();
+      applyFlash();
+      // Reset CSS zoom when reinitializing — prevents stale scale
+      zoomLayer.style.transform = 'scale(1)';
+      zoomLevel = 1;
     } catch (err) {
       console.error('Camera error:', err);
-      alert('Unable to access camera. Please grant permission and try again.');
     }
   }
 
@@ -558,12 +577,27 @@
     vibrate(30);
     currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
     mirrorOverride = null;
+    currentZoomPreset = 1;
+    document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
     initCamera(false);
   });
 
-  // ─── Zoom ───
+  if (rotateBtnLs) {
+    rotateBtnLs.addEventListener('click', () => {
+      vibrate(30);
+      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+      mirrorOverride = null;
+      currentZoomPreset = 1;
+      document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
+      initCamera(false);
+    });
+  }
+
+  // ─── Zoom — clamped to prevent black borders ───
   function setZoom(level) {
-    zoomLevel = Math.min(Math.max(level, 0.5), 6);
+    // Minimum 1.0 prevents CSS scaling below 100% which causes black borders
+    // Maximum 6x for digital zoom
+    zoomLevel = Math.min(Math.max(level, 1.0), 6);
     zoomLayer.style.transform = `scale(${zoomLevel})`;
     const zoomPill = document.getElementById('zoom-indicator');
     if (zoomPill) {
@@ -620,7 +654,8 @@
     if (e.touches.length === 2) {
       e.preventDefault();
       const dist = touchDist(e.touches);
-      setZoom(pinchStartZoom * (dist / pinchStartDist));
+      const rawZoom = pinchStartZoom * (dist / pinchStartDist);
+      setZoom(rawZoom); // setZoom already clamps to min 1.0
     }
   }
 
@@ -636,7 +671,6 @@
       isRecording ? stopRecording() : startRecordingWithTimer();
       return;
     }
-    // Photo mode
     if (timerSeconds > 0 && !timerActive) {
       startTimerThenCapture();
     } else if (!timerActive) {
@@ -645,7 +679,7 @@
   }
 
   captureBtn.addEventListener('click', handleCaptureTrigger);
-  if (gyroCaptureBtn) gyroCaptureBtn.addEventListener('click', handleCaptureTrigger);
+  if (captureBtnLs) captureBtnLs.addEventListener('click', handleCaptureTrigger);
 
   // Long-press for video
   captureBtn.addEventListener('touchstart', () => {
@@ -654,6 +688,7 @@
       document.querySelectorAll('.mode-pill').forEach((b) => b.classList.toggle('active', b.dataset.mode === 'video'));
       currentMode = 'video';
       captureBtn.classList.add('video-mode');
+      if (captureBtnLs) captureBtnLs.classList.add('video-mode');
       initCamera(false).then(() => startRecording());
     }, 800);
   }, { passive: true });
@@ -674,7 +709,6 @@
         timerCountdownEl.textContent = count;
         playTimerBeep(false);
         vibrate(20);
-        // Refresh animation
         timerCountdownEl.style.animation = 'none';
         timerCountdownEl.offsetHeight;
         timerCountdownEl.style.animation = '';
@@ -769,7 +803,7 @@
     mediaRecorder.start(100);
     isRecording = true;
     captureBtn.classList.add('recording');
-    if (gyroCaptureBtn) gyroCaptureBtn.classList.add('recording');
+    if (captureBtnLs) captureBtnLs.classList.add('recording');
     recordingIndicator.classList.remove('hidden');
     recStart = Date.now();
     recTimer.textContent = '00:00';
@@ -783,7 +817,7 @@
     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     isRecording = false;
     captureBtn.classList.remove('recording');
-    if (gyroCaptureBtn) gyroCaptureBtn.classList.remove('recording');
+    if (captureBtnLs) captureBtnLs.classList.remove('recording');
     recordingIndicator.classList.add('hidden');
     if (recTimerId) { clearInterval(recTimerId); recTimerId = null; }
     vibrate(100);
@@ -796,7 +830,7 @@
     tlFrames = [];
     tlFrameCount = 0;
     captureBtn.classList.add('recording');
-    if (gyroCaptureBtn) gyroCaptureBtn.classList.add('recording');
+    if (captureBtnLs) captureBtnLs.classList.add('recording');
     tlIndicator.classList.remove('hidden');
     tlFrameCountEl.textContent = '0';
     vibrate([50, 50, 50]);
@@ -820,9 +854,10 @@
 
   async function stopTimelapse() {
     clearInterval(tlIntervalId);
+    tlIntervalId = null;
     tlCapturing = false;
     captureBtn.classList.remove('recording');
-    if (gyroCaptureBtn) gyroCaptureBtn.classList.remove('recording');
+    if (captureBtnLs) captureBtnLs.classList.remove('recording');
     tlIndicator.classList.add('hidden');
     vibrate(100);
 
@@ -830,48 +865,72 @@
     showMicroToast(`Rendering ${tlFrames.length} frames…`);
 
     try {
-      const blob = await renderTimelapseVideo(tlFrames, 24); // 24fps output
+      const frames = tlFrames.slice();
       tlFrames = [];
+      const blob = await renderTimelapseVideo(frames, 24);
       showReviewScreen(blob, 'timelapse.webm', 'video/webm', true);
     } catch (e) {
+      console.error('Timelapse render error:', e);
       showMicroToast('Timelapse render failed');
       tlFrames = [];
     }
   }
 
-  async function renderTimelapseVideo(frames, fps) {
+  function renderTimelapseVideo(frames, fps) {
     return new Promise((resolve, reject) => {
       const w = frames[0].width, h = frames[0].height;
       const outCanvas = document.createElement('canvas');
       outCanvas.width = w; outCanvas.height = h;
       const ctx = outCanvas.getContext('2d');
       const stream = outCanvas.captureStream(fps);
+
       let rec;
-      try { rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); }
-      catch (e) { rec = new MediaRecorder(stream); }
+      const mimeTypes = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+      for (const mime of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          try { rec = new MediaRecorder(stream, { mimeType: mime }); break; } catch (e) {}
+        }
+      }
+      if (!rec) {
+        try { rec = new MediaRecorder(stream); } catch (e) { reject(e); return; }
+      }
+
       const chunks = [];
-      rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      rec.onstop = () => resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
-      rec.onerror = reject;
-      rec.start();
+      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = () => {
+        if (chunks.length === 0) { reject(new Error('No data recorded')); return; }
+        resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+      };
+      rec.onerror = (e) => reject(e);
+
+      // Request data frequently to prevent data loss
+      rec.start(200);
 
       let i = 0;
-      const interval = setInterval(() => {
+      const frameDelay = Math.max(1000 / fps, 16);
+
+      function drawNextFrame() {
         if (i >= frames.length) {
-          clearInterval(interval);
-          rec.stop();
+          // Flush any remaining data then stop
+          try { rec.requestData(); } catch (e) {}
+          setTimeout(() => {
+            try { rec.stop(); } catch (e) { reject(e); }
+          }, 200);
           return;
         }
         ctx.drawImage(frames[i], 0, 0);
         i++;
-      }, 1000 / fps);
+        setTimeout(drawNextFrame, frameDelay);
+      }
+
+      drawNextFrame();
     });
   }
 
   // ─── Draft Queue ───
   function addToDraftQueue(blob, filename, mimetype) {
     const objUrl = URL.createObjectURL(blob);
-    draftQueue.push({ blob, filename, mimetype, objUrl, caption: '' });
+    draftQueue.push({ blob, filename, mimetype, objUrl, caption: '', snapBarY: 50 });
     updateDraftBadge();
     vibrate(30);
     playShutterSound();
@@ -915,59 +974,135 @@
     refreshGalleryThumb();
   });
 
+  draftUploadCurrent.addEventListener('click', async () => {
+    if (!draftQueue.length) return;
+    const item = draftQueue[draftViewIndex];
+    if (!item) return;
+    // Save current caption
+    item.caption = draftCaptionInput.value.trim();
+    draftReviewPanel.classList.add('hidden');
+    await uploadMedia(item.blob, item.filename, item.mimetype, item.caption, 'bottom');
+    URL.revokeObjectURL(item.objUrl);
+    draftQueue.splice(draftViewIndex, 1);
+    updateDraftBadge();
+    if (draftQueue.length === 0) {
+      refreshGalleryThumb();
+    } else {
+      draftViewIndex = Math.min(draftViewIndex, draftQueue.length - 1);
+      openDraftPanel();
+    }
+    refreshGalleryThumb();
+  });
+
+  draftDeleteCurrent.addEventListener('click', () => {
+    if (!draftQueue.length) return;
+    const item = draftQueue[draftViewIndex];
+    if (!item) return;
+    URL.revokeObjectURL(item.objUrl);
+    draftQueue.splice(draftViewIndex, 1);
+    updateDraftBadge();
+    if (draftQueue.length === 0) {
+      draftReviewPanel.classList.add('hidden');
+      showMicroToast('Draft deleted');
+    } else {
+      draftViewIndex = Math.min(draftViewIndex, draftQueue.length - 1);
+      renderDraftViewer();
+    }
+  });
+
+  draftPrev.addEventListener('click', () => {
+    if (draftViewIndex > 0) {
+      saveDraftCaption();
+      draftViewIndex--;
+      renderDraftViewer();
+    }
+  });
+
+  draftNext.addEventListener('click', () => {
+    if (draftViewIndex < draftQueue.length - 1) {
+      saveDraftCaption();
+      draftViewIndex++;
+      renderDraftViewer();
+    }
+  });
+
+  draftCaptionInput.addEventListener('input', () => {
+    const text = draftCaptionInput.value.trim();
+    draftSnapText.textContent = text;
+    draftSnapBar.style.display = text ? 'flex' : 'none';
+    draftViewerHint.classList.toggle('hidden', !!text);
+    if (draftQueue[draftViewIndex]) draftQueue[draftViewIndex].caption = text;
+  });
+
+  function saveDraftCaption() {
+    if (draftQueue[draftViewIndex]) {
+      draftQueue[draftViewIndex].caption = draftCaptionInput.value.trim();
+      const barTopPct = parseFloat(draftSnapBar.style.top) || 50;
+      draftQueue[draftViewIndex].snapBarY = barTopPct;
+    }
+  }
+
   function openDraftPanel() {
-    renderDraftList();
+    if (!draftQueue.length) return;
+    draftViewIndex = Math.min(draftViewIndex, draftQueue.length - 1);
     draftPanelCount.textContent = `${draftQueue.length} photo${draftQueue.length !== 1 ? 's' : ''}`;
+    renderDraftViewer();
     draftReviewPanel.classList.remove('hidden');
   }
 
-  function renderDraftList() {
-    draftList.innerHTML = '';
-    draftQueue.forEach((item, idx) => {
-      const el = document.createElement('div');
-      el.className = 'draft-item';
-      const isVideo = item.mimetype && item.mimetype.startsWith('video');
-      el.innerHTML = `
-        <div class="draft-item-media">
-          ${isVideo
-            ? `<video src="${item.objUrl}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover"></video>`
-            : `<img src="${item.objUrl}" alt="Draft ${idx+1}">`
-          }
-        </div>
-        <div class="draft-item-controls">
-          <input type="text" class="draft-item-caption" placeholder="Caption for draft #${idx+1}…" maxlength="100" value="${escapeHtml(item.caption)}">
-          <button class="draft-delete-btn" data-idx="${idx}" aria-label="Delete draft">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-          </button>
-        </div>
-      `;
-      el.querySelector('.draft-item-caption').addEventListener('input', (e) => {
-        draftQueue[idx].caption = e.target.value;
-      });
-      el.querySelector('.draft-delete-btn').addEventListener('click', () => {
-        URL.revokeObjectURL(item.objUrl);
-        draftQueue.splice(idx, 1);
-        updateDraftBadge();
-        if (draftQueue.length === 0) {
-          draftReviewPanel.classList.add('hidden');
-        } else {
-          openDraftPanel();
-        }
-      });
-      draftList.appendChild(el);
-    });
+  function renderDraftViewer() {
+    const item = draftQueue[draftViewIndex];
+    if (!item) return;
+
+    draftPanelCount.textContent = `${draftQueue.length} photo${draftQueue.length !== 1 ? 's' : ''}`;
+    draftItemCounter.textContent = `${draftViewIndex + 1} / ${draftQueue.length}`;
+
+    // Render media
+    draftViewerMedia.innerHTML = '';
+    const isVideo = item.mimetype && item.mimetype.startsWith('video');
+    if (isVideo) {
+      const v = document.createElement('video');
+      v.src = item.objUrl; v.controls = true; v.autoplay = true;
+      v.muted = true; v.playsInline = true; v.loop = true;
+      draftViewerMedia.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.src = item.objUrl;
+      draftViewerMedia.appendChild(img);
+    }
+
+    // Caption bar
+    const caption = item.caption || '';
+    draftCaptionInput.value = caption;
+    draftSnapText.textContent = caption;
+    const barY = item.snapBarY !== undefined ? item.snapBarY : 50;
+    draftSnapBar.style.top = barY + '%';
+    draftSnapBar.style.display = caption ? 'flex' : 'none';
+    draftViewerHint.classList.toggle('hidden', !!caption);
+
+    // Nav buttons
+    draftPrev.style.display = draftViewIndex > 0 ? 'flex' : 'none';
+    draftNext.style.display = draftViewIndex < draftQueue.length - 1 ? 'flex' : 'none';
   }
+
+  // ─── Draft snap bar drag ───
+  setupSnapBarDrag(draftSnapBar, {
+    getY: () => parseFloat(draftSnapBar.style.top) || 50,
+    setY: (pct) => {
+      draftSnapBar.style.top = pct + '%';
+      if (draftQueue[draftViewIndex]) draftQueue[draftViewIndex].snapBarY = pct;
+    },
+    getContainer: () => draftSnapBar.parentElement
+  });
 
   // ─── Review Screen ───
   function showReviewScreen(blob, filename, mimetype, isVideo) {
     pendingCapture = { blob, filename, mimetype, isVideo };
     reviewCaptionInput.value = '';
     snapCaptionText.textContent = '';
-    snapCaptionEl.dataset.active = 'false';
-    snapCaptionEl.style.display = 'none';
-    snapCurrentX = 50; snapCurrentY = 50; snapRotation = 0;
-    snapCaptionEl.style.left = '50%'; snapCaptionEl.style.top = '50%';
-    snapCaptionEl.style.transform = 'translate(-50%, -50%) rotate(0deg)';
+    snapCaptionBar.style.display = 'none';
+    snapBarY = 50;
+    snapCaptionBar.style.top = '50%';
     snapTapHint.classList.remove('hidden');
 
     reviewMedia.innerHTML = '';
@@ -987,110 +1122,75 @@
     appEl.classList.add('hidden');
   }
 
-  // ─── Snap Caption (Snapchat-style draggable) ───
+  // ─── Snap Caption Bar (full-width, vertical drag only) ───
   reviewCaptionInput.addEventListener('input', () => {
     const text = reviewCaptionInput.value.trim();
     if (text) {
       snapCaptionText.textContent = text;
-      snapCaptionEl.dataset.active = 'true';
-      snapCaptionEl.style.display = 'block';
+      snapCaptionBar.style.display = 'flex';
       snapTapHint.classList.add('hidden');
     } else {
       snapCaptionText.textContent = '';
-      snapCaptionEl.dataset.active = 'false';
-      snapCaptionEl.style.display = 'none';
+      snapCaptionBar.style.display = 'none';
       snapTapHint.classList.remove('hidden');
     }
   });
 
-  // Drag support for snap caption
-  snapCaptionEl.addEventListener('mousedown', startSnapDrag);
-  snapCaptionEl.addEventListener('touchstart', startSnapTouchDrag, { passive: false });
+  // Generic vertical drag setup for full-width caption bars
+  function setupSnapBarDrag(barEl, opts) {
+    let dragging = false;
+    let startClientY = 0;
+    let startTopPct = 50;
 
-  function startSnapDrag(e) {
-    if (e.type === 'mousedown') {
-      snapDragActive = true;
-      snapDragStartX = e.clientX;
-      snapDragStartY = e.clientY;
-      const rect = snapCaptionEl.getBoundingClientRect();
-      const layerRect = snapCaptionLayer.getBoundingClientRect();
-      snapElStartX = ((rect.left + rect.width / 2 - layerRect.left) / layerRect.width) * 100;
-      snapElStartY = ((rect.top + rect.height / 2 - layerRect.top) / layerRect.height) * 100;
-      document.addEventListener('mousemove', onSnapDragMove);
-      document.addEventListener('mouseup', endSnapDrag);
+    function getTopPercent(clientY, deltaY) {
+      const container = opts.getContainer();
+      const rect = container.getBoundingClientRect();
+      const newTopPx = (startTopPct / 100) * rect.height + deltaY;
+      const pct = (newTopPx / rect.height) * 100;
+      return Math.max(3, Math.min(97, pct));
+    }
+
+    barEl.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startClientY = e.clientY;
+      startTopPct = opts.getY();
       e.preventDefault();
-    }
+    });
+
+    barEl.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      dragging = true;
+      startClientY = e.touches[0].clientY;
+      startTopPct = opts.getY();
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const pct = getTopPercent(e.clientY, e.clientY - startClientY);
+      opts.setY(pct);
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const pct = getTopPercent(e.touches[0].clientY, e.touches[0].clientY - startClientY);
+      opts.setY(pct);
+    }, { passive: false });
+
+    document.addEventListener('mouseup', () => { dragging = false; });
+    document.addEventListener('touchend', () => { dragging = false; });
   }
 
-  function onSnapDragMove(e) {
-    if (!snapDragActive) return;
-    const layerRect = snapCaptionLayer.getBoundingClientRect();
-    const dx = ((e.clientX - snapDragStartX) / layerRect.width) * 100;
-    const dy = ((e.clientY - snapDragStartY) / layerRect.height) * 100;
-    snapCurrentX = Math.max(5, Math.min(95, snapElStartX + dx));
-    snapCurrentY = Math.max(5, Math.min(95, snapElStartY + dy));
-    snapCaptionEl.style.left = snapCurrentX + '%';
-    snapCaptionEl.style.top = snapCurrentY + '%';
-    snapCaptionEl.style.transform = `translate(-50%, -50%) rotate(${snapRotation}deg)`;
-  }
-
-  function endSnapDrag() {
-    snapDragActive = false;
-    document.removeEventListener('mousemove', onSnapDragMove);
-    document.removeEventListener('mouseup', endSnapDrag);
-  }
-
-  let snapTouchIds = [];
-  let snapPinchStartAngle = 0;
-  let snapPinchRotStart2 = 0;
-
-  function startSnapTouchDrag(e) {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      snapDragActive = true;
-      snapDragStartX = touch.clientX;
-      snapDragStartY = touch.clientY;
-      const rect = snapCaptionEl.getBoundingClientRect();
-      const layerRect = snapCaptionLayer.getBoundingClientRect();
-      snapElStartX = ((rect.left + rect.width / 2 - layerRect.left) / layerRect.width) * 100;
-      snapElStartY = ((rect.top + rect.height / 2 - layerRect.top) / layerRect.height) * 100;
-    } else if (e.touches.length === 2) {
-      snapDragActive = false;
-      const dx = e.touches[1].clientX - e.touches[0].clientX;
-      const dy = e.touches[1].clientY - e.touches[0].clientY;
-      snapPinchStartAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-      snapPinchRotStart2 = snapRotation;
-    }
-  }
-
-  snapCaptionEl.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (e.touches.length === 1 && snapDragActive) {
-      const touch = e.touches[0];
-      const layerRect = snapCaptionLayer.getBoundingClientRect();
-      const dx = ((touch.clientX - snapDragStartX) / layerRect.width) * 100;
-      const dy = ((touch.clientY - snapDragStartY) / layerRect.height) * 100;
-      snapCurrentX = Math.max(5, Math.min(95, snapElStartX + dx));
-      snapCurrentY = Math.max(5, Math.min(95, snapElStartY + dy));
-    } else if (e.touches.length === 2) {
-      const dx = e.touches[1].clientX - e.touches[0].clientX;
-      const dy = e.touches[1].clientY - e.touches[0].clientY;
-      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-      snapRotation = snapPinchRotStart2 + (angle - snapPinchStartAngle);
-    }
-    snapCaptionEl.style.left = snapCurrentX + '%';
-    snapCaptionEl.style.top = snapCurrentY + '%';
-    snapCaptionEl.style.transform = `translate(-50%, -50%) rotate(${snapRotation}deg)`;
-  }, { passive: false });
-
-  snapCaptionEl.addEventListener('touchend', () => { snapDragActive = false; });
+  setupSnapBarDrag(snapCaptionBar, {
+    getY: () => snapBarY,
+    setY: (pct) => { snapBarY = pct; snapCaptionBar.style.top = pct + '%'; },
+    getContainer: () => snapCaptionBar.parentElement
+  });
 
   reviewDiscardBtn.addEventListener('click', () => {
     pendingCapture = null;
     reviewMedia.innerHTML = '';
-    snapCaptionEl.dataset.active = 'false';
-    snapCaptionEl.style.display = 'none';
+    snapCaptionBar.style.display = 'none';
     reviewScreen.classList.add('hidden');
     appEl.classList.remove('hidden');
   });
@@ -1144,37 +1244,6 @@
       clearTimeout(timeoutId);
       showMicroToast(isVideo ? 'Video upload failed — check connection' : 'Upload failed — check connection');
       uploadProgress.classList.add('hidden'); progressFill.style.width = '0';
-    }
-  }
-
-  // ─── Gyro Orientation ───
-  function setupGyro() {
-    const requestGyro = async () => {
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const perm = await DeviceOrientationEvent.requestPermission();
-          if (perm !== 'granted') return;
-        } catch (e) { return; }
-      }
-      window.addEventListener('deviceorientation', handleGyro, true);
-    };
-    requestGyro();
-  }
-
-  function handleGyro(e) {
-    if (e.gamma === null) return;
-    const absGamma = Math.abs(e.gamma);
-    const wasLandscape = gyroLandscape;
-    // gamma > 40 means device is tilted sideways (landscape hold)
-    gyroLandscape = absGamma > 40;
-    if (gyroLandscape !== wasLandscape) {
-      document.body.classList.toggle('gyro-landscape', gyroLandscape);
-      if (gyroLandscape) {
-        gyroShutter.classList.remove('hidden');
-      } else {
-        gyroShutter.classList.add('hidden');
-      }
     }
   }
 
@@ -1246,7 +1315,6 @@
       img.style.maxWidth = '92vw'; img.style.maxHeight = '75vh'; img.style.borderRadius = '14px';
       wrap.appendChild(img);
     }
-    // Caption overlay
     if (p.caption) {
       const capEl = document.createElement('div');
       capEl.className = 'modal-caption-overlay';
