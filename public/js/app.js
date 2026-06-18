@@ -64,6 +64,15 @@
   let draftSnapStartY = 0;
   let draftSnapStartTop = 0;
 
+  // Focus / exposure
+  let focusActive = false;
+  let focusBoxX = 0;
+  let focusBoxY = 0;
+  let exposureLevel = 0.5;
+  let exposureDragging = false;
+  let exposureStartY = 0;
+  let exposureStartLevel = 0.5;
+
   // ─── DOM refs ───
   const registrationModal = document.getElementById('registration-modal');
   const participantInput = document.getElementById('participant-input');
@@ -88,7 +97,9 @@
   const tlIndicator = document.getElementById('timelapse-indicator');
   const tlFrameCountEl = document.getElementById('tl-frame-count');
   const galleryBtn = document.getElementById('gallery-btn');
+  const galleryBtnLs = document.getElementById('gallery-btn-ls');
   const galleryThumb = document.getElementById('gallery-thumb');
+  const galleryThumbLs = document.getElementById('gallery-thumb-ls');
   const welcomeCover = document.getElementById('welcome-cover');
   const welcomeEventName = document.getElementById('welcome-event-name');
   const welcomeEventSubtitle = document.getElementById('welcome-event-subtitle');
@@ -136,6 +147,13 @@
   const snapCaptionBar = document.getElementById('snap-caption-bar');
   const snapCaptionText = document.getElementById('snap-caption-text');
   const snapTapHint = document.getElementById('snap-tap-hint');
+  const orientationModal = document.getElementById('orientation-modal');
+  const orientationUnderstandBtn = document.getElementById('orientation-understand-btn');
+  const orientationDontShow = document.getElementById('orientation-dont-show');
+  const focusOverlay = document.getElementById('focus-overlay');
+  const focusBox = document.getElementById('focus-box');
+  const exposureSlider = document.getElementById('exposure-slider');
+  const exposureThumb = document.getElementById('exposure-thumb');
 
   // ─── Audio ───
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -220,6 +238,173 @@
   }
   window.showMicroToast = showMicroToast;
 
+  // ─── Smart Name Truncation ───
+  function truncateName(fullName) {
+    if (!fullName) return '';
+    const words = fullName.trim().split(/\s+/);
+    if (words.length < 3) return fullName;
+    const first = words[0];
+    const rest = words.slice(1);
+    const abbreviated = rest.map(w => w.charAt(0).toUpperCase() + '.').join(' ');
+    return first + ' ' + abbreviated;
+  }
+
+  // ─── Orientation Modal ───
+  function showOrientationModal() {
+    const skip = localStorage.getItem('dc_orientation_skip');
+    if (skip === 'true') return;
+    if (orientationModal) orientationModal.classList.remove('hidden');
+  }
+
+  function hideOrientationModal() {
+    if (orientationModal) orientationModal.classList.add('hidden');
+    if (orientationDontShow && orientationDontShow.checked) {
+      localStorage.setItem('dc_orientation_skip', 'true');
+    }
+  }
+
+  if (orientationUnderstandBtn) {
+    orientationUnderstandBtn.addEventListener('click', hideOrientationModal);
+  }
+
+  // ─── Smart Rotation for Landscape ───
+  function updateOrientationStyles() {
+    const isLandscape = window.innerWidth > window.innerHeight;
+    const profileText = document.querySelector('.profile-text');
+    const counter = document.getElementById('moments-counter');
+    const recInd = document.getElementById('recording-indicator');
+    const tlInd = document.getElementById('timelapse-indicator');
+    if (profileText) profileText.classList.toggle('smart-rotate', isLandscape);
+    if (counter) counter.classList.toggle('smart-rotate', isLandscape);
+    if (recInd) recInd.classList.toggle('smart-rotate', isLandscape);
+    if (tlInd) tlInd.classList.toggle('smart-rotate', isLandscape);
+  }
+  window.addEventListener('resize', updateOrientationStyles);
+  window.addEventListener('orientationchange', updateOrientationStyles);
+
+  // ─── Touch-to-Focus & Exposure ───
+  function setupFocusOverlay() {
+    if (!focusOverlay) return;
+    let focusTimer = null;
+
+    focusOverlay.addEventListener('click', (e) => {
+      // Don't trigger focus if tapping on controls
+      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom') || e.target.closest('.vf-landscape-sidebar')) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = viewfinder.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      focusBoxX = x;
+      focusBoxY = y;
+      focusActive = true;
+
+      if (focusBox) {
+        focusBox.style.left = x + 'px';
+        focusBox.style.top = y + 'px';
+        focusBox.classList.remove('hidden');
+      }
+      if (exposureSlider) exposureSlider.classList.remove('hidden');
+      vibrate(20);
+
+      // Try to lock camera exposure via constraints
+      lockExposureAtPoint(x / rect.width, y / rect.height);
+
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => {
+        if (focusBox) focusBox.classList.add('hidden');
+        if (exposureSlider) exposureSlider.classList.add('hidden');
+        focusActive = false;
+        unlockExposure();
+      }, 4000);
+    });
+
+    // Exposure drag
+    if (exposureThumb) {
+      exposureThumb.addEventListener('mousedown', (e) => {
+        if (!focusActive) return;
+        e.preventDefault();
+        exposureDragging = true;
+        exposureStartY = e.clientY;
+        exposureStartLevel = exposureLevel;
+      });
+      exposureThumb.addEventListener('touchstart', (e) => {
+        if (!focusActive || e.touches.length !== 1) return;
+        e.preventDefault();
+        exposureDragging = true;
+        exposureStartY = e.touches[0].clientY;
+        exposureStartLevel = exposureLevel;
+      }, { passive: false });
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      if (!exposureDragging) return;
+      const deltaY = exposureStartY - e.clientY;
+      const range = 140;
+      const delta = deltaY / range;
+      exposureLevel = Math.max(0, Math.min(1, exposureStartLevel + delta));
+      if (exposureThumb) exposureThumb.style.bottom = (exposureLevel * 100) + '%';
+      applyExposureLevel(exposureLevel);
+    });
+    document.addEventListener('touchmove', (e) => {
+      if (!exposureDragging || e.touches.length !== 1) return;
+      const deltaY = exposureStartY - e.touches[0].clientY;
+      const range = 140;
+      const delta = deltaY / range;
+      exposureLevel = Math.max(0, Math.min(1, exposureStartLevel + delta));
+      if (exposureThumb) exposureThumb.style.bottom = (exposureLevel * 100) + '%';
+      applyExposureLevel(exposureLevel);
+    }, { passive: false });
+    document.addEventListener('mouseup', () => { exposureDragging = false; });
+    document.addEventListener('touchend', () => { exposureDragging = false; });
+  }
+
+  async function lockExposureAtPoint(xNorm, yNorm) {
+    if (!mediaStream) return;
+    const track = mediaStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+    const caps = track.getCapabilities();
+    if (!caps.exposureMode) return;
+    try {
+      await track.applyConstraints({
+        advanced: [{ exposureMode: 'manual' }]
+      });
+    } catch (e) {}
+  }
+
+  async function unlockExposure() {
+    if (!mediaStream) return;
+    const track = mediaStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+    const caps = track.getCapabilities();
+    if (!caps.exposureMode) return;
+    try {
+      await track.applyConstraints({
+        advanced: [{ exposureMode: 'continuous' }]
+      });
+    } catch (e) {}
+    exposureLevel = 0.5;
+    if (exposureThumb) exposureThumb.style.bottom = '50%';
+  }
+
+  async function applyExposureLevel(level) {
+    if (!mediaStream) return;
+    const track = mediaStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+    const caps = track.getCapabilities();
+    if (caps.exposureCompensation) {
+      const min = caps.exposureCompensation.min || -3;
+      const max = caps.exposureCompensation.max || 3;
+      const val = min + (max - min) * level;
+      try {
+        await track.applyConstraints({
+          advanced: [{ exposureCompensation: val }]
+        });
+      } catch (e) {}
+    }
+  }
+
   // ─── Event Config ───
   async function loadEventConfig() {
     try {
@@ -236,14 +421,24 @@
 
   // ─── Gallery thumb ───
   function updateGalleryThumbnail(photos) {
-    if (!galleryThumb) return;
     const latest = photos && photos.find((p) => p.fileType === 'photo');
-    if (latest) {
-      galleryThumb.classList.add('has-photo');
-      galleryThumb.style.backgroundImage = `url('${url('uploads/' + latest.filename)}')`;
-    } else {
-      galleryThumb.classList.remove('has-photo');
-      galleryThumb.style.backgroundImage = '';
+    if (galleryThumb) {
+      if (latest) {
+        galleryThumb.classList.add('has-photo');
+        galleryThumb.style.backgroundImage = `url('${url('uploads/' + latest.filename)}')`;
+      } else {
+        galleryThumb.classList.remove('has-photo');
+        galleryThumb.style.backgroundImage = '';
+      }
+    }
+    if (galleryThumbLs) {
+      if (latest) {
+        galleryThumbLs.classList.add('has-photo');
+        galleryThumbLs.style.backgroundImage = `url('${url('uploads/' + latest.filename)}')`;
+      } else {
+        galleryThumbLs.classList.remove('has-photo');
+        galleryThumbLs.style.backgroundImage = '';
+      }
     }
   }
 
@@ -302,6 +497,7 @@
         }
       } catch (e) { localStorage.removeItem('dc_user'); }
     }
+    showOrientationModal();
   }
 
   registerBtn.addEventListener('click', doRegister);
@@ -335,15 +531,19 @@
   function showApp() {
     registrationModal.classList.add('hidden');
     appEl.classList.remove('hidden');
-    userName.textContent = currentUser.fullName;
+    const displayName = truncateName(currentUser.fullName);
+    userName.textContent = displayName;
     userNumber.textContent = `#${currentUser.participantNumber}`;
-    const isMale = currentUser.gender === 'L';
+    const genderNorm = (currentUser.gender || '').toString().trim().toUpperCase();
+    const isMale = genderNorm === 'L' || genderNorm.startsWith('LAKI');
     genderIcon.className = `gender-icon ${isMale ? 'male' : 'female'}`;
     genderIcon.innerHTML = `<img src="${url('images/' + (isMale ? 'male' : 'female') + '-icon.svg')}" alt="">`;
     initCamera();
     setupZoomGestures();
+    setupFocusOverlay();
     listenForRevocation();
     refreshGalleryThumb();
+    updateOrientationStyles();
     if (typeof initChat === 'function') initChat(currentUser);
   }
 
@@ -878,17 +1078,38 @@
 
   function renderTimelapseVideo(frames, fps) {
     return new Promise((resolve, reject) => {
-      const w = frames[0].width, h = frames[0].height;
+      if (!frames || frames.length < 2) {
+        reject(new Error('Not enough frames'));
+        return;
+      }
+      const w = frames[0].width || 640;
+      const h = frames[0].height || 480;
       const outCanvas = document.createElement('canvas');
-      outCanvas.width = w; outCanvas.height = h;
+      outCanvas.width = w;
+      outCanvas.height = h;
       const ctx = outCanvas.getContext('2d');
-      const stream = outCanvas.captureStream(fps);
 
-      let rec;
-      const mimeTypes = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+      let rec = null;
+      let stream = null;
+      try {
+        stream = outCanvas.captureStream(fps);
+      } catch (e) {
+        reject(new Error('Canvas captureStream not supported'));
+        return;
+      }
+
+      const mimeTypes = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+      ];
       for (const mime of mimeTypes) {
         if (MediaRecorder.isTypeSupported(mime)) {
-          try { rec = new MediaRecorder(stream, { mimeType: mime }); break; } catch (e) {}
+          try {
+            rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
+            break;
+          } catch (e) {}
         }
       }
       if (!rec) {
@@ -896,34 +1117,56 @@
       }
 
       const chunks = [];
-      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-      rec.onstop = () => {
-        if (chunks.length === 0) { reject(new Error('No data recorded')); return; }
-        resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 2) chunks.push(e.data);
       };
-      rec.onerror = (e) => reject(e);
+      rec.onstop = () => {
+        if (chunks.length > 0) {
+          resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+        } else {
+          reject(new Error('No video data recorded'));
+        }
+      };
+      rec.onerror = (e) => reject(e || new Error('MediaRecorder error'));
 
-      // Request data frequently to prevent data loss
-      rec.start(200);
+      rec.start(500);
 
-      let i = 0;
-      const frameDelay = Math.max(1000 / fps, 16);
+      let i = 1;
+      const frameDuration = Math.max(1000 / fps, 16);
+      let drawnCount = 1;
 
       function drawNextFrame() {
         if (i >= frames.length) {
-          // Flush any remaining data then stop
-          try { rec.requestData(); } catch (e) {}
-          setTimeout(() => {
-            try { rec.stop(); } catch (e) { reject(e); }
-          }, 200);
+          if (rec.state !== 'inactive') {
+            try { rec.requestData(); } catch (e) {}
+            setTimeout(() => {
+              try { if (rec.state !== 'inactive') rec.stop(); } catch (e) {}
+            }, 400);
+          }
           return;
         }
-        ctx.drawImage(frames[i], 0, 0);
+        const f = frames[i];
+        if (!f || !f.width) { i++; drawNextFrame(); return; }
+        ctx.clearRect(0, 0, w, h);
+        try {
+          ctx.drawImage(f, 0, 0, w, h);
+          drawnCount++;
+        } catch (e) {
+          i++;
+          drawNextFrame();
+          return;
+        }
         i++;
-        setTimeout(drawNextFrame, frameDelay);
+        setTimeout(drawNextFrame, frameDuration);
       }
 
-      drawNextFrame();
+      // Wait a tick for recorder to start, then draw first frame and begin sequence
+      setTimeout(() => {
+        try {
+          ctx.drawImage(frames[0], 0, 0, w, h);
+        } catch (e) {}
+        setTimeout(drawNextFrame, frameDuration);
+      }, 50);
     });
   }
 
@@ -1252,6 +1495,9 @@
   const DOWNLOAD_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
   galleryBtn.addEventListener('click', () => { vibrate(20); loadGallery(); galleryModal.classList.remove('hidden'); });
+  if (galleryBtnLs) {
+    galleryBtnLs.addEventListener('click', () => { vibrate(20); loadGallery(); galleryModal.classList.remove('hidden'); });
+  }
   galleryModalClose.addEventListener('click', () => galleryModal.classList.add('hidden'));
   galleryModal.addEventListener('click', (e) => { if (e.target === galleryModal) galleryModal.classList.add('hidden'); });
 
@@ -1304,7 +1550,7 @@
   function openMediaModal(p) {
     mediaModalBody.innerHTML = '';
     const wrap = document.createElement('div');
-    wrap.style.position = 'relative';
+    wrap.className = 'media-wrap';
     if (p.fileType === 'video') {
       const v = document.createElement('video');
       v.src = url('uploads/' + p.filename); v.controls = true; v.autoplay = true;
@@ -1312,13 +1558,13 @@
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + p.filename);
-      img.style.maxWidth = '92vw'; img.style.maxHeight = '75vh'; img.style.borderRadius = '14px';
       wrap.appendChild(img);
     }
+    // Snapchat-style caption overlay
     if (p.caption) {
       const capEl = document.createElement('div');
-      capEl.className = 'modal-caption-overlay';
-      capEl.innerHTML = `<span class="modal-caption-text">${escapeHtml(p.caption)}</span>`;
+      capEl.className = 'snap-modal-caption';
+      capEl.innerHTML = `<span>${escapeHtml(p.caption)}</span>`;
       wrap.appendChild(capEl);
     }
     mediaModalBody.appendChild(wrap);

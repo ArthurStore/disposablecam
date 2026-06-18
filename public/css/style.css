@@ -44,6 +44,68 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* ─── Orientation Modal ─── */
+.orientation-modal {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+}
+.orientation-modal.hidden { display: none !important; }
+.orientation-modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+.orientation-modal-content {
+  position: relative;
+  background: var(--grad-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 32px 32px;
+  text-align: center;
+  width: 100%; max-width: 340px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+  animation: slideUp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.orientation-icon {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: rgba(255, 181, 71, 0.12);
+  border: 1px solid rgba(255, 181, 71, 0.3);
+  display: grid; place-items: center;
+  margin: 0 auto 18px;
+  color: var(--accent);
+  animation: rotateIcon 2s ease-in-out infinite;
+}
+@keyframes rotateIcon {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+}
+.orientation-title {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.orientation-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+.orientation-dont-show {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.orientation-dont-show input {
+  width: 18px; height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* ─── Micro toast ─── */
 .micro-toast {
   position: fixed;
@@ -67,6 +129,121 @@ html, body {
   text-align: center;
 }
 .micro-toast.show { opacity: 1; }
+
+/* ─── Marquee banner ─── */
+.marquee-banner {
+  position: absolute;
+  top: calc(56px + var(--safe-top));
+  left: 0; right: 0;
+  z-index: 19;
+  overflow: hidden;
+  background: rgba(255, 181, 71, 0.12);
+  border-top: 1px solid rgba(255, 181, 71, 0.25);
+  border-bottom: 1px solid rgba(255, 181, 71, 0.25);
+  padding: 4px 0;
+}
+.marquee-track {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marqueeScroll 20s linear infinite;
+  padding-left: 100%;
+}
+.marquee-text {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+@keyframes marqueeScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ─── Touch-to-focus overlay ─── */
+.focus-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.focus-box {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  pointer-events: none;
+  z-index: 16;
+  transform: translate(-50%, -50%);
+}
+.focus-box.hidden { display: none !important; }
+
+.focus-reticle {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(255, 215, 0, 0.9);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.3);
+  animation: focusPulse 1.5s ease-in-out infinite;
+}
+@keyframes focusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.exposure-slider {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.exposure-slider.hidden { display: none !important; }
+
+.exposure-track {
+  flex: 1;
+  width: 4px;
+  background: rgba(255,255,255,0.25);
+  border-radius: 2px;
+  position: relative;
+  margin: 4px 0;
+}
+.exposure-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 215, 0, 0.9);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  cursor: ns-resize;
+}
+.exposure-labels {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.7);
+}
+.exp-label-plus { color: #fff; }
+.exp-label-minus { color: rgba(255,255,255,0.5); }
+
+/* ─── Smart orientation rotation for text elements ─── */
+.profile-text.smart-rotate h1,
+.profile-text.smart-rotate span,
+.moments-counter.smart-rotate,
+#recording-indicator.smart-rotate,
+.timelapse-indicator.smart-rotate {
+  transition: transform 0.3s ease;
+}
 
 /* ═══ Welcome Landing ═══ */
 .welcome-screen {
@@ -673,6 +850,29 @@ html, body {
   width: 64px; height: 64px;
 }
 
+.ls-gallery {
+  width: 48px; height: 48px;
+  border-radius: 10px;
+  border: 2px solid rgba(255,255,255,0.85);
+  padding: 2px;
+  background: rgba(0,0,0,0.4);
+  cursor: pointer;
+  overflow: hidden;
+}
+.ls-gallery .gallery-thumb-inner {
+  display: grid; place-items: center;
+  width: 100%; height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.7);
+}
+.ls-gallery .gallery-thumb-inner.has-photo {
+  background-size: cover;
+  background-position: center;
+}
+.ls-gallery .gallery-thumb-inner.has-photo svg { display: none; }
+
 .ls-flip {
   flex-direction: column;
 }
@@ -1191,28 +1391,75 @@ html, body {
   background: rgba(0, 0, 0, 0.96);
   z-index: 5000;
   display: flex; align-items: center; justify-content: center;
+  padding: 20px;
 }
 
-.media-modal-content { position: relative; max-width: 95vw; max-height: 95vh; }
+.media-modal-content {
+  position: relative;
+  width: 100%;
+  max-width: 95vw;
+  max-height: 95vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.media-modal-content .media-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 12px;
+}
 .media-modal-content img,
 .media-modal-content video {
   max-width: 92vw;
-  max-height: 86vh;
+  max-height: 82vh;
   object-fit: contain;
   border-radius: 12px;
+  display: block;
+}
+
+/* Snapchat-style caption overlay inside media modal */
+.snap-modal-caption {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.72);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  min-height: 48px;
+  border-radius: 0 0 12px 12px;
+}
+.snap-modal-caption span {
+  font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .modal-close-btn {
   position: absolute;
-  top: -46px; right: 0;
-  width: 36px; height: 36px;
+  top: 12px;
+  right: 12px;
+  width: 40px; height: 40px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255,255,255,0.2);
   color: #fff;
   cursor: pointer;
   display: grid; place-items: center;
+  z-index: 20;
+  transition: background 0.2s ease;
 }
+.modal-close-btn:hover { background: rgba(255,77,94,0.8); }
 
 .media-modal-actions {
   display: flex;
@@ -1596,20 +1843,14 @@ html, body {
     display: flex;
   }
 
-  /* Hide the bottom gallery thumb and flip button in landscape
-     (they move to the sidebar) */
-  .vf-controls-row .gallery-thumb-btn {
-    display: none;
-  }
-  .vf-controls-row .vf-side-btn {
-    display: none;
-  }
-  /* Center the capture btn in the now-smaller controls row */
+  /* Keep the bottom gallery thumb and flip button visible in landscape
+     (they mirror the portrait layout) */
   .vf-controls-row {
-    justify-content: center;
-    padding: 8px 0;
+    justify-content: space-between;
+    padding: 4px 0;
   }
-  /* But actually hide the portrait capture btn too since sidebar has it */
+
+  /* Hide portrait capture button, use sidebar one */
   #capture-btn {
     display: none;
   }
@@ -1648,8 +1889,23 @@ html, body {
     padding: 4px 10px;
   }
 
+  /* Hide chat FAB and panel in landscape */
   .chat-fab {
-    bottom: 16px;
-    width: 42px; height: 42px;
+    display: none !important;
+  }
+  .chat-panel {
+    display: none !important;
+  }
+
+  /* Smart rotation for profile text and counters */
+  .profile-text.smart-rotate h1,
+  .profile-text.smart-rotate span,
+  .moments-counter.smart-rotate {
+    transform: rotate(0deg);
+  }
+
+  /* Marquee banner in landscape */
+  .marquee-banner {
+    top: calc(48px + var(--safe-top));
   }
 }

@@ -352,7 +352,7 @@
         tr.innerHTML = `
           <td>${escapeHtml(u.participantNumber)}</td>
           <td>${escapeHtml(u.fullName)}</td>
-          <td>${u.gender === 'L' ? '♂ Male' : '♀ Female'}</td>
+          <td>${u.gender === 'L' || u.gender === 'Laki - Laki' ? '♂ Male' : '♀ Female'}</td>
           <td><span class="${u.isBanned ? 'status-banned' : 'status-active'}">${u.isBanned ? 'Banned' : 'Active'}</span></td>
           <td class="action-cell">
             <button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button>

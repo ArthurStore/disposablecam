@@ -31,8 +31,18 @@ async function importFromText(text) {
     const [num, name, gender] = parts;
     if (num.toLowerCase().includes('no') || num === '---') continue;
 
-    const g = gender.toUpperCase();
-    if (g !== 'L' && g !== 'P') continue;
+    const gRaw = gender.trim().toUpperCase();
+    let g = null;
+    if (gRaw === 'L' || gRaw === 'LAKI - LAKI' || gRaw === 'LAKI-LAKI' || gRaw === 'LAKI' || gRaw === 'MALE') {
+      g = 'Laki - Laki';
+    } else if (gRaw === 'P' || gRaw === 'PEREMPUAN' || gRaw === 'FEMALE') {
+      g = 'Perempuan';
+    }
+    if (!g) {
+      console.log(`  Skipped: ${num} — invalid gender "${gender}"`);
+      skipped++;
+      continue;
+    }
 
     try {
       const existing = await User.findOne({ participantNumber: num });

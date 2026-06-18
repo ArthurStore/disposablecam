@@ -32,6 +32,23 @@
   <!-- Micro toast overlay -->
   <div id="micro-toast" class="micro-toast hidden"></div>
 
+  <!-- Orientation intercept modal -->
+  <div id="orientation-modal" class="orientation-modal hidden">
+    <div class="orientation-modal-backdrop"></div>
+    <div class="orientation-modal-content">
+      <div class="orientation-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21.5 2v6h-6"/><path d="M2.5 12A10 10 0 0 1 18.5 5.3L21.5 8"/><path d="M2.5 22v-6h6"/><path d="M21.5 12A10 10 0 0 1 5.5 18.7L2.5 16"/></svg>
+      </div>
+      <h2 class="orientation-title">Please rotate your phone</h2>
+      <p class="orientation-subtitle">before using for the best experience.</p>
+      <label class="orientation-dont-show">
+        <input type="checkbox" id="orientation-dont-show">
+        <span>Don't show again</span>
+      </label>
+      <button id="orientation-understand-btn" class="btn-primary">I Understand</button>
+    </div>
+  </div>
+
   <!-- Welcome landing -->
   <div id="registration-modal" class="welcome-screen">
     <div id="welcome-cover" class="welcome-cover"></div>
@@ -63,6 +80,21 @@
         </div>
         <canvas id="capture-canvas" class="hidden"></canvas>
 
+        <!-- Touch-to-focus overlay -->
+        <div id="focus-overlay" class="focus-overlay"></div>
+        <div id="focus-box" class="focus-box hidden">
+          <div class="focus-reticle"></div>
+          <div id="exposure-slider" class="exposure-slider hidden">
+            <div class="exposure-track">
+              <div id="exposure-thumb" class="exposure-thumb" style="bottom:50%"></div>
+            </div>
+            <div class="exposure-labels">
+              <span class="exp-label-plus">+</span>
+              <span class="exp-label-minus">-</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Grid overlay -->
         <div id="grid-overlay" class="grid-overlay hidden"></div>
 
@@ -92,6 +124,13 @@
               <svg class="flash-icon flash-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               <svg class="flash-icon flash-on hidden" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             </button>
+          </div>
+        </div>
+
+        <!-- Diagnostics marquee banner -->
+        <div id="marquee-banner" class="marquee-banner">
+          <div class="marquee-track">
+            <span class="marquee-text">If your chats fail to sync or messages aren't sending, please log out and log back in to refresh your live session.</span>
           </div>
         </div>
 
@@ -144,12 +183,12 @@
           </div>
         </div>
 
-        <!-- Landscape right sidebar (only visible in landscape) -->
+        <!-- Landscape right sidebar (mirrors portrait layout) -->
         <div class="vf-landscape-sidebar landscape-only">
           <div class="ls-modes">
             <button class="mode-pill ls-mode active" data-mode="photo">PHOTO</button>
             <button class="mode-pill ls-mode" data-mode="video">VIDEO</button>
-            <button class="mode-pill ls-mode" data-mode="timelapse">TL</button>
+            <button class="mode-pill ls-mode" data-mode="timelapse">TIMELAPSE</button>
           </div>
           <div class="ls-zoom">
             <button class="zoom-preset-btn ls-zoom-btn" data-zoom="0.5">0.5×</button>
@@ -158,6 +197,11 @@
           </div>
           <button id="capture-btn-ls" class="capture-btn ls-capture" aria-label="Capture">
             <div class="capture-inner"></div>
+          </button>
+          <button id="gallery-btn-ls" class="gallery-thumb-btn ls-gallery" aria-label="Gallery">
+            <span id="gallery-thumb-ls" class="gallery-thumb-inner">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </span>
           </button>
           <button id="rotate-btn-ls" class="vf-side-btn ls-flip" aria-label="Flip Camera">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>

@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
-    enum: ['L', 'P'],
+    enum: ['L', 'P', 'Laki - Laki', 'Perempuan'],
     required: true
   },
   isBanned: {

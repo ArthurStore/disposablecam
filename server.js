@@ -386,7 +386,12 @@ router.post('/api/admin/import-participants', async (req, res) => {
       if (!numClean || numClean === '---' || /^[\s-]+$/.test(numClean)) continue;
       if (!nameClean || nameClean === '---' || /^[\s-]+$/.test(nameClean)) continue;
 
-      const g = (genderClean === 'L' || genderClean === 'P') ? genderClean : null;
+      let g = null;
+      if (genderClean === 'L' || genderClean === 'LAKI - LAKI' || genderClean === 'LAKI-LAKI' || genderClean === 'LAKI') {
+        g = 'Laki - Laki';
+      } else if (genderClean === 'P' || genderClean === 'PEREMPUAN') {
+        g = 'Perempuan';
+      }
       if (!g) {
         skipped++;
         continue;
