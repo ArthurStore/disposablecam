@@ -99,6 +99,15 @@ async function getEventSettings() {
   return settings;
 }
 
+/** Map any stored gender label to Photo schema enum: L | P */
+function normalizeGender(gender) {
+  if (gender == null || gender === '') return null;
+  const g = gender.toString().trim().toUpperCase();
+  if (g === 'L' || g.startsWith('LAKI') || g === 'MALE' || g === 'M') return 'L';
+  if (g === 'P' || g.startsWith('PEREMP') || g === 'FEMALE' || g === 'F') return 'P';
+  return null;
+}
+
 // ─── Initialize admin PIN ───
 async function initAdminPin() {
   const count = await AdminPin.countDocuments();
@@ -133,7 +142,7 @@ router.post('/api/validate', async (req, res) => {
       id: user._id,
       participantNumber: user.participantNumber,
       fullName: user.fullName,
-      gender: user.gender
+      gender: normalizeGender(user.gender) || user.gender
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -151,10 +160,15 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
     const fileType = (req.file.mimetype && req.file.mimetype.startsWith('video')) ||
       /\.(webm|mp4|mov|mkv)$/i.test(req.file.filename) ? 'video' : 'photo';
 
+    const photoGender = normalizeGender(gender) || normalizeGender(user.gender);
+    if (!photoGender) {
+      return res.status(400).json({ error: 'Invalid participant gender' });
+    }
+
     const photo = await Photo.create({
       participantNumber,
       fullName: fullName || user.fullName,
-      gender: gender || user.gender,
+      gender: photoGender,
       filename: req.file.filename,
       originalName: req.file.originalname,
       mimetype: req.file.mimetype,
