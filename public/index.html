@@ -29,10 +29,10 @@
     })();
   </script>
 
-  <!-- Micro toast overlay (session / notifications) -->
+  <!-- Micro toast overlay -->
   <div id="micro-toast" class="micro-toast hidden"></div>
 
-  <!-- Welcome landing (full-page event cover) -->
+  <!-- Welcome landing -->
   <div id="registration-modal" class="welcome-screen">
     <div id="welcome-cover" class="welcome-cover"></div>
     <div class="welcome-overlay">
@@ -58,6 +58,9 @@
         </div>
         <canvas id="capture-canvas" class="hidden"></canvas>
 
+        <!-- Grid overlay -->
+        <div id="grid-overlay" class="grid-overlay hidden"></div>
+
         <!-- Top bar -->
         <div class="vf-top">
           <div class="profile-chip">
@@ -69,42 +72,83 @@
             <button id="logout-btn" class="profile-logout-btn" title="Logout" aria-label="Logout">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
+            <button id="settings-btn" class="profile-settings-btn" title="Settings" aria-label="Settings">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
+          <div id="moments-counter" class="moments-counter hidden">
+            <span id="moments-count">0</span>
+            <span class="moments-label">shots</span>
           </div>
         </div>
 
-        <!-- Flash — isolated top-right -->
+        <!-- Flash button -->
         <button id="flash-btn" class="vf-flash-btn" title="Flash" aria-label="Flash" data-mode="off">
           <svg class="flash-icon flash-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           <svg class="flash-icon flash-on hidden" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </button>
+
+        <!-- Timer countdown overlay -->
+        <div id="timer-countdown" class="timer-countdown hidden">3</div>
 
         <!-- REC indicator -->
         <div id="recording-indicator" class="hidden">
           <span class="rec-dot"></span> REC <span id="rec-timer">00:00</span>
         </div>
 
+        <!-- Timelapse indicator -->
+        <div id="timelapse-indicator" class="timelapse-indicator hidden">
+          <span class="tl-dot"></span> TL &nbsp;<span id="tl-frame-count">0</span> frames
+        </div>
+
+        <!-- Gyro landscape shutter (right-edge capture button) -->
+        <div id="gyro-shutter" class="gyro-shutter hidden">
+          <button id="gyro-capture-btn" class="capture-btn gyro-capture" aria-label="Capture">
+            <div class="capture-inner"></div>
+          </button>
+        </div>
+
         <!-- Bottom controls -->
         <div class="vf-bottom">
-          <button id="gallery-btn" class="gallery-thumb-btn" aria-label="Gallery">
-            <span id="gallery-thumb" class="gallery-thumb-inner">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-            </span>
-          </button>
 
-          <div class="vf-shutter-row">
-            <button id="zoom-indicator" class="zoom-pill" aria-label="Reset zoom">1×</button>
+          <!-- Moments Captured display -->
+          <div id="moments-row" class="vf-moments-row hidden">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+            <span>Moments: </span><strong id="moments-total">0</strong>
+          </div>
+
+          <!-- Modes bar -->
+          <div class="vf-modes-bar">
+            <button class="mode-pill active" data-mode="photo">PHOTO</button>
+            <button class="mode-pill" data-mode="video">VIDEO</button>
+            <button class="mode-pill" data-mode="timelapse">TIMELAPSE</button>
+          </div>
+
+          <!-- Zoom presets -->
+          <div class="vf-zoom-row">
+            <button class="zoom-preset-btn" data-zoom="0.5">0.5×</button>
+            <button class="zoom-preset-btn active" data-zoom="1">1×</button>
+            <button class="zoom-preset-btn" data-zoom="2">2×</button>
+            <button id="zoom-indicator" class="zoom-pill hidden" aria-label="Reset zoom">1×</button>
+          </div>
+
+          <!-- Main controls -->
+          <div class="vf-controls-row">
+            <button id="gallery-btn" class="gallery-thumb-btn" aria-label="Gallery">
+              <span id="gallery-thumb" class="gallery-thumb-inner">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              </span>
+            </button>
+
             <button id="capture-btn" class="capture-btn" aria-label="Capture">
               <div class="capture-inner"></div>
             </button>
-            <button id="mode-toggle-btn" class="video-mode-btn" title="Photo/Video" aria-label="Switch Mode" aria-pressed="false">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+
+            <button id="rotate-btn" class="vf-side-btn" aria-label="Flip Camera">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Flip</span>
             </button>
           </div>
-
-          <button id="rotate-btn" class="vf-side-btn" aria-label="Flip Camera">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            <span>Flip</span>
-          </button>
         </div>
       </div>
 
@@ -114,6 +158,13 @@
         <p class="progress-text">Uploading…</p>
       </div>
     </section>
+
+    <!-- Draft queue badge -->
+    <div id="draft-badge" class="draft-badge hidden" role="button" tabindex="0" aria-label="Review drafts">
+      <span id="draft-count" class="draft-badge-count">0</span>
+      <span class="draft-badge-label">DRAFTS</span>
+      <span class="draft-badge-action">TAP TO REVIEW</span>
+    </div>
 
     <!-- Chat FAB -->
     <button id="chat-toggle-btn" class="chat-fab" aria-label="Open Chat">
@@ -152,27 +203,83 @@
         </button>
       </div>
     </div>
+
+    <!-- Settings panel -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <div class="settings-header">
+        <h3>Camera Settings</h3>
+        <button id="settings-close" class="icon-btn" aria-label="Close Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <div class="setting-row">
+          <span class="setting-label">Grid Lines</span>
+          <button id="grid-toggle" class="setting-toggle" aria-pressed="false">OFF</button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Self-Timer</span>
+          <div class="setting-options">
+            <button class="timer-opt active" data-seconds="0">Off</button>
+            <button class="timer-opt" data-seconds="3">3s</button>
+            <button class="timer-opt" data-seconds="5">5s</button>
+            <button class="timer-opt" data-seconds="10">10s</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Continuous Mode</span>
+          <button id="continuous-toggle" class="setting-toggle" aria-pressed="false">OFF</button>
+        </div>
+        <div class="setting-row" id="tl-interval-row">
+          <span class="setting-label">Timelapse Interval</span>
+          <div class="setting-options">
+            <button class="tl-interval active" data-interval="2">2s</button>
+            <button class="tl-interval" data-interval="5">5s</button>
+            <button class="tl-interval" data-interval="10">10s</button>
+            <button class="tl-interval" data-interval="30">30s</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Review screen (post-capture) -->
   <div id="review-screen" class="review-screen hidden">
     <div class="review-preview-wrap">
       <div id="review-media" class="review-media"></div>
-      <div id="review-caption-bar" class="review-caption-bar bottom">
-        <span id="review-caption-text"></span>
+      <!-- Snapchat-style draggable caption -->
+      <div id="snap-caption-layer" class="snap-caption-layer">
+        <div id="snap-caption-el" class="snap-caption-el" data-active="false">
+          <span id="snap-caption-text"></span>
+        </div>
       </div>
+      <!-- Tap hint -->
+      <div id="snap-tap-hint" class="snap-tap-hint">Tap photo to add caption</div>
     </div>
     <div class="review-controls">
       <input type="text" id="review-caption-input" placeholder="Add a caption…" maxlength="100">
-      <div class="review-caption-pos">
-        <span>Caption position:</span>
-        <button id="caption-pos-top" class="pos-btn">Top</button>
-        <button id="caption-pos-bottom" class="pos-btn active">Bottom</button>
-      </div>
       <div class="review-actions">
         <button id="review-discard-btn" class="review-btn discard">Discard</button>
         <button id="review-upload-btn" class="review-btn upload">Upload</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Draft Review Panel -->
+  <div id="draft-review-panel" class="draft-review-panel hidden">
+    <div class="draft-panel-header">
+      <div>
+        <h2>Draft Queue</h2>
+        <span id="draft-panel-count" class="draft-panel-count">0 photos</span>
+      </div>
+      <button id="draft-panel-close" class="icon-btn" aria-label="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="draft-list" class="draft-list"></div>
+    <div class="draft-panel-footer">
+      <button id="draft-discard-all" class="review-btn discard">Discard All</button>
+      <button id="draft-upload-all" class="review-btn upload">Save All</button>
     </div>
   </div>
 

@@ -317,26 +317,94 @@ router.get('/api/admin/system', async (req, res) => {
   }
 });
 
+// Markdown table parser for participant imports
+function parseMarkdownTable(data) {
+  const rawLines = data.split('\n');
+  const cleanedLines = [];
+
+  for (const rawLine of rawLines) {
+    let line = rawLine.trim();
+
+    // Skip empty lines
+    if (!line) continue;
+
+    // Skip markdown separator lines (e.g., |---|---|---|)
+    if (/^\|?[\s-|]+\|?$/.test(line)) continue;
+
+    // Skip header-like lines that contain column titles
+    const lowerLine = line.toLowerCase();
+    if (lowerLine.includes('no peserta') || lowerLine.includes('nama') ||
+        lowerLine.includes('l/p') || lowerLine.includes('gender') ||
+        lowerLine.includes('number') || lowerLine.includes('name') ||
+        /^[\|\s]*(no|nama|gender|l\/p)[\|\s]*/i.test(line)) {
+      continue;
+    }
+
+    cleanedLines.push(line);
+  }
+
+  const participants = [];
+
+  for (const line of cleanedLines) {
+    // Remove leading/trailing pipes if present
+    let stripped = line.replace(/^\|+|\|+$/g, '');
+
+    // Split by pipe delimiter
+    const parts = stripped.split('|').map(p => p.trim()).filter(Boolean);
+
+    if (parts.length < 3) {
+      // Try comma fallback for non-markdown format
+      const commaParts = line.split(',').map(p => p.trim()).filter(Boolean);
+      if (commaParts.length >= 3) {
+        const [num, name, gender] = commaParts;
+        participants.push({ num, name, gender });
+      }
+      continue;
+    }
+
+    const [num, name, gender] = parts;
+    participants.push({ num, name, gender });
+  }
+
+  return participants;
+}
+
 router.post('/api/admin/import-participants', async (req, res) => {
   try {
     const { data } = req.body;
     if (!data) return res.status(400).json({ error: 'No data provided' });
-    const lines = data.split('\n').filter(l => l.trim());
+
+    const participants = parseMarkdownTable(data);
     let imported = 0, skipped = 0;
-    for (const line of lines) {
-      const parts = line.split('|').map(p => p.trim()).filter(Boolean);
-      if (parts.length < 3) continue;
-      const [num, name, gender] = parts;
-      if (num.toLowerCase() === 'no' || num.toLowerCase() === 'no peserta' || num === '---') continue;
-      const g = gender.toUpperCase() === 'L' || gender.toUpperCase() === 'P' ? gender.toUpperCase() : null;
-      if (!g) continue;
+
+    for (const { num, name, gender } of participants) {
+      // Skip header remnants or invalid entries
+      const numClean = (num || '').toString().trim();
+      const nameClean = (name || '').toString().trim();
+      const genderClean = (gender || '').toString().trim().toUpperCase();
+
+      if (!numClean || numClean === '---' || /^[\s-]+$/.test(numClean)) continue;
+      if (!nameClean || nameClean === '---' || /^[\s-]+$/.test(nameClean)) continue;
+
+      const g = (genderClean === 'L' || genderClean === 'P') ? genderClean : null;
+      if (!g) {
+        skipped++;
+        continue;
+      }
+
       try {
-        const existing = await User.findOne({ participantNumber: num });
-        if (existing) { skipped++; continue; }
-        await User.create({ participantNumber: num, fullName: name, gender: g });
+        const existing = await User.findOne({ participantNumber: numClean });
+        if (existing) {
+          skipped++;
+          continue;
+        }
+        await User.create({ participantNumber: numClean, fullName: nameClean, gender: g });
         imported++;
-      } catch (e) { skipped++; }
+      } catch (e) {
+        skipped++;
+      }
     }
+
     res.json({ success: true, imported, skipped });
   } catch (err) {
     res.status(500).json({ error: 'Import failed' });

@@ -31,6 +31,60 @@
   let privateRecipientName = '';
   let participantsCache = [];
   let participantLoadPending = false;
+  let recoveryInProgress = false;
+  let incognitoDetected = false;
+
+  // Detect incognito/private browsing mode
+  function detectIncognito() {
+    return new Promise((resolve) => {
+      const fs = window.RequestFileSystem || window.webkitRequestFileSystem;
+      if (!fs) {
+        incognitoDetected = true;
+        resolve(true);
+        return;
+      }
+      fs(window.TEMPORARY, 100, () => resolve(false), () => {
+        incognitoDetected = true;
+        resolve(true);
+      });
+    });
+  }
+
+  // Silent auto-recovery routine for non-incognito sessions
+  async function performAutoRecovery() {
+    if (recoveryInProgress || incognitoDetected) return false;
+    recoveryInProgress = true;
+
+    try {
+      // Clear old LocalStorage data related to chat
+      const chatKeys = Object.keys(localStorage).filter(k =>
+        k.startsWith('chat_') || k.includes('session') || k.includes('socket')
+      );
+      chatKeys.forEach(k => localStorage.removeItem(k));
+
+      // Force socket reconnection with fresh handshake
+      if (socket.connected) {
+        socket.disconnect();
+        await new Promise(r => setTimeout(r, 200));
+      }
+      socket.connect();
+
+      // Wait for connection then refetch history
+      await new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve(), 2000);
+        socket.once('connect', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      recoveryInProgress = false;
+    }
+  }
 
   const chatToggleBtn = document.getElementById('chat-toggle-btn');
   const chatBadge = document.getElementById('chat-badge');
@@ -408,12 +462,37 @@
   }
 
   async function loadHistory(force) {
+    // Set up 3-second timeout for auto-recovery trigger
+    const timeoutId = setTimeout(async () => {
+      if (!incognitoDetected) {
+        await detectIncognito();
+      }
+      if (!incognitoDetected) {
+        const recovered = await performAutoRecovery();
+        if (recovered) {
+          // Retry loading after recovery
+          try {
+            const res = await fetchWithRetry('messages', 1);
+            const messages = await res.json();
+            chatMessages.innerHTML = '';
+            messages.forEach(appendPublicMessage);
+            return;
+          } catch (e) {}
+        }
+      }
+      if (chatMessages.children.length === 0) {
+        showUploadError('Chat history unavailable — reconnecting…');
+      }
+    }, 3000);
+
     try {
       const res = await fetchWithRetry('messages', 3);
+      clearTimeout(timeoutId);
       const messages = await res.json();
       chatMessages.innerHTML = '';
       messages.forEach(appendPublicMessage);
     } catch (err) {
+      clearTimeout(timeoutId);
       if (chatMessages.children.length === 0) {
         showUploadError('Chat history unavailable — reconnecting…');
       }
