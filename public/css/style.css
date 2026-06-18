@@ -252,11 +252,11 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 .exp-label-plus { color: #fff; }
 .exp-label-minus { color: rgba(255,255,255,0.5); }
 
-/* ─── Smart orientation rotation — user bar & shot counter only ─── */
+/* ─── Smart orientation — landscape layout via CSS only ─── */
 .profile-text.smart-rotate h1,
 .profile-text.smart-rotate span,
 .moments-counter.smart-rotate {
-  transition: transform 0.3s ease;
+  transition: none;
 }
 
 /* ═══ Welcome Landing ═══ */
@@ -563,7 +563,8 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 .moments-counter {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  min-width: 32px;
   padding: 6px 10px;
   background: rgba(0,0,0,0.55);
   -webkit-backdrop-filter: blur(10px);
@@ -577,8 +578,9 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   font-weight: 800;
   color: var(--accent);
   font-family: 'Montserrat', sans-serif;
+  line-height: 1;
 }
-.moments-label { font-size: 0.6rem; color: rgba(255,255,255,0.5); font-weight: 600; letter-spacing: 0.08em; }
+.moments-label { display: none; }
 
 /* Flash button — part of top-right group */
 .vf-flash-btn {
@@ -757,12 +759,24 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   cursor: pointer;
 }
 
-/* Main controls row */
+/* Main controls row — shutter centered */
 .vf-controls-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   padding: 4px 0;
+}
+.gallery-cluster {
+  justify-self: start;
+  grid-column: 1;
+}
+.capture-btn {
+  justify-self: center;
+  grid-column: 2;
+}
+.vf-side-btn {
+  justify-self: end;
+  grid-column: 3;
 }
 
 .gallery-thumb-btn {
@@ -1859,42 +1873,107 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 }
 
 /* ══════════════════════════════════════
-   LANDSCAPE — portrait grid stays fixed; labels rotate sideways
+   LANDSCAPE — right rail (thumb zone), horizontal text, chat hidden
    ══════════════════════════════════════ */
 @media (orientation: landscape) and (max-height: 600px) {
+  .chat-fab,
+  .chat-panel {
+    display: none !important;
+  }
+
   .vf-top {
-    padding: calc(6px + var(--safe-top)) 12px 6px;
+    padding: calc(6px + var(--safe-top)) 100px 6px 12px;
+    z-index: 25;
   }
 
-  .profile-text.smart-rotate h1,
-  .profile-text.smart-rotate span {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    transform: rotate(180deg);
-    max-width: none;
+  .profile-text h1,
+  .profile-text span {
+    writing-mode: horizontal-tb;
+    transform: none;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .moments-counter.smart-rotate {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    flex-direction: row;
-    padding: 8px 6px;
+  .vf-bottom {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    width: 100px;
+    padding: calc(52px + var(--safe-top)) 10px calc(12px + var(--safe-bottom)) 10px;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(270deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.45) 55%, transparent 100%);
+  }
+
+  .vf-modes-bar,
+  .vf-zoom-row {
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    align-items: center;
   }
 
   .mode-pill,
   .zoom-preset-btn {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    transform: rotate(180deg);
-    padding: 10px 6px;
+    writing-mode: horizontal-tb;
+    transform: none;
+    padding: 5px 8px;
+    font-size: 0.55rem;
     letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .vf-controls-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .gallery-cluster {
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .moments-counter {
+    padding: 5px 8px;
+    min-width: 28px;
+  }
+
+  .capture-btn {
+    width: 68px;
+    height: 68px;
+    margin: 2px 0;
+  }
+
+  .vf-side-btn {
+    padding: 4px;
+  }
+  .vf-side-btn span {
+    font-size: 0.55rem;
   }
 
   #recording-indicator,
   .timelapse-indicator {
-    top: calc(52px + var(--safe-top));
-    font-size: 0.65rem;
-    padding: 4px 10px;
+    top: calc(50px + var(--safe-top));
+    left: 30%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+
+  .draft-badge {
+    left: 30%;
+  }
+
+  #upload-progress {
+    right: 110px;
+    left: 16px;
   }
 }

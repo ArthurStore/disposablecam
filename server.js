@@ -15,6 +15,8 @@ const PrivateMessage = require('./models/PrivateMessage');
 const EventSettings = require('./models/EventSettings');
 const AdminPin = require('./models/AdminPin');
 const bcrypt = require('bcryptjs');
+let ffmpeg;
+try { ffmpeg = require('fluent-ffmpeg'); } catch (e) { ffmpeg = null; }
 
 // ═══ Sub-path mounting (e.g. BASE_PATH=/cam) ═══
 // All static files, API routes, page routes, and Socket.IO will be
@@ -197,6 +199,98 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
     console.error('[UPLOAD FAILED LOG]: ', err);
     res.status(500).json({ error: 'Upload failed' });
   }
+});
+
+// ─── Timelapse server-side render (ffmpeg) ───
+router.post('/api/timelapse-render', (req, res) => {
+  const sessionId = Date.now() + '-' + Math.round(Math.random() * 1e6);
+  const tmpDir = path.join(os.tmpdir(), 'dc-tl-' + sessionId);
+  let frameIdx = 0;
+
+  const tlUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => {
+        try {
+          if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+          cb(null, tmpDir);
+        } catch (e) { cb(e); }
+      },
+      filename: (req, file, cb) => {
+        frameIdx += 1;
+        cb(null, `frame_${String(frameIdx).padStart(5, '0')}.jpg`);
+      }
+    }),
+    limits: { fileSize: 8 * 1024 * 1024 }
+  }).array('frames', 500);
+
+  tlUpload(req, res, async (uploadErr) => {
+    const cleanup = () => {
+      try {
+        if (fs.existsSync(tmpDir)) {
+          fs.readdirSync(tmpDir).forEach((f) => {
+            try { fs.unlinkSync(path.join(tmpDir, f)); } catch (e) {}
+          });
+          fs.rmdirSync(tmpDir);
+        }
+      } catch (e) {}
+    };
+
+    if (uploadErr) {
+      console.error('[TIMELAPSE ERROR]: frame upload —', uploadErr);
+      cleanup();
+      return res.status(400).json({ error: uploadErr.message || 'Frame upload failed' });
+    }
+
+    const files = req.files || [];
+    if (files.length < 2) {
+      console.error('[TIMELAPSE ERROR]: not enough frames —', files.length);
+      cleanup();
+      return res.status(400).json({ error: 'Need at least 2 frames' });
+    }
+
+    if (!ffmpeg) {
+      console.error('[TIMELAPSE ERROR]: fluent-ffmpeg not available');
+      cleanup();
+      return res.status(503).json({ error: 'Timelapse renderer not installed on server' });
+    }
+
+    const fps = Math.min(30, Math.max(4, parseInt(req.body.fps, 10) || 12));
+    const inputPattern = path.join(tmpDir, 'frame_%05d.jpg');
+    const outMp4 = path.join(tmpDir, 'timelapse.mp4');
+    const outWebm = path.join(tmpDir, 'timelapse.webm');
+
+    const tryEncode = (outputPath, opts) => new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(inputPattern)
+        .inputFPS(fps)
+        .outputOptions(opts)
+        .on('end', () => resolve(outputPath))
+        .on('error', (err) => reject(err))
+        .save(outputPath);
+    });
+
+    try {
+      let outputPath = null;
+      try {
+        outputPath = await tryEncode(outMp4, ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '23', '-movflags', '+faststart']);
+      } catch (mp4Err) {
+        console.error('[TIMELAPSE ERROR]: mp4 encode failed —', mp4Err.message);
+        outputPath = await tryEncode(outWebm, ['-c:v', 'libvpx-vp9', '-b:v', '2M', '-pix_fmt', 'yuv420p']);
+      }
+
+      const mime = outputPath.endsWith('.mp4') ? 'video/mp4' : 'video/webm';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Disposition', 'inline; filename="timelapse' + path.extname(outputPath) + '"');
+      res.sendFile(outputPath, (sendErr) => {
+        cleanup();
+        if (sendErr) console.error('[TIMELAPSE ERROR]: send file —', sendErr);
+      });
+    } catch (err) {
+      console.error('[TIMELAPSE ERROR]: ', err);
+      cleanup();
+      res.status(500).json({ error: 'Timelapse render failed', detail: err.message });
+    }
+  });
 });
 
 router.get('/api/gallery/:participantNumber', async (req, res) => {

@@ -267,13 +267,10 @@
     orientationUnderstandBtn.addEventListener('click', hideOrientationModal);
   }
 
-  // ─── Smart Rotation for Landscape ───
+  // ─── Orientation layout hook (landscape uses CSS only) ───
   function updateOrientationStyles() {
     const isLandscape = window.innerWidth > window.innerHeight;
-    const profileText = document.querySelector('.profile-text');
-    const counter = document.getElementById('moments-counter');
-    if (profileText) profileText.classList.toggle('smart-rotate', isLandscape);
-    if (counter) counter.classList.toggle('smart-rotate', isLandscape);
+    document.body.classList.toggle('landscape-ui', isLandscape);
   }
   window.addEventListener('resize', updateOrientationStyles);
   window.addEventListener('orientationchange', updateOrientationStyles);
@@ -1146,14 +1143,118 @@
   function captureTlFrame() {
     if (!video.videoWidth) return;
     const c = document.createElement('canvas');
-    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
     const ctx = c.getContext('2d');
     if (video.classList.contains('mirrored')) { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
     ctx.drawImage(video, 0, 0);
-    tlFrames.push(c);
-    tlFrameCount++;
-    if (tlFrameCountEl) tlFrameCountEl.textContent = tlFrameCount;
-    vibrate(10);
+    c.toBlob((blob) => {
+      if (!blob) return;
+      tlFrames.push(blob);
+      tlFrameCount++;
+      if (tlFrameCountEl) tlFrameCountEl.textContent = tlFrameCount;
+      vibrate(10);
+    }, 'image/jpeg', 0.88);
+  }
+
+  async function renderTimelapseOnServer(frameBlobs, fps) {
+    const formData = new FormData();
+    frameBlobs.forEach((blob, i) => {
+      formData.append('frames', blob, `frame_${String(i).padStart(5, '0')}.jpg`);
+    });
+    formData.append('fps', String(fps || 12));
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+    try {
+      const res = await fetch(api('timelapse-render'), {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        let msg = 'Server render failed';
+        try {
+          const data = await res.json();
+          msg = data.error || data.detail || msg;
+        } catch (e) {}
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      if (!blob || blob.size < 500) throw new Error('Empty timelapse output');
+      return blob;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      throw e;
+    }
+  }
+
+  async function loadFrameSource(blob) {
+    if (typeof createImageBitmap !== 'undefined') {
+      return createImageBitmap(blob);
+    }
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(blob);
+      img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Frame decode failed')); };
+      img.src = objUrl;
+    });
+  }
+
+  async function renderTimelapseClient(frameBlobs, fps) {
+    const images = await Promise.all(frameBlobs.map(loadFrameSource));
+    const w = images[0].width || 640;
+    const h = images[0].height || 480;
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = w;
+    outCanvas.height = h;
+    const ctx = outCanvas.getContext('2d');
+
+    let stream;
+    try { stream = outCanvas.captureStream(fps); }
+    catch (e) { throw new Error('Canvas captureStream not supported'); }
+
+    const mimeTypes = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+    let rec = null;
+    for (const mime of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(mime)) {
+        try { rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4000000 }); break; }
+        catch (e) {}
+      }
+    }
+    if (!rec) {
+      try { rec = new MediaRecorder(stream); } catch (e) { throw e; }
+    }
+
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = () => {
+        if (chunks.length) resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+        else reject(new Error('No video data recorded'));
+      };
+      rec.onerror = (e) => reject(e || new Error('MediaRecorder error'));
+
+      const frameMs = Math.max(1000 / fps, 33);
+      let i = 0;
+      rec.start(250);
+
+      function drawFrame() {
+        if (i >= images.length) {
+          try { rec.requestData(); } catch (e) {}
+          setTimeout(() => { try { if (rec.state !== 'inactive') rec.stop(); } catch (e) {} }, 500);
+          return;
+        }
+        ctx.drawImage(images[i], 0, 0, w, h);
+        i++;
+        setTimeout(drawFrame, frameMs);
+      }
+
+      ctx.drawImage(images[0], 0, 0, w, h);
+      setTimeout(drawFrame, frameMs);
+    });
   }
 
   async function stopTimelapse() {
@@ -1170,107 +1271,22 @@
     try {
       const frames = tlFrames.slice();
       tlFrames = [];
-      const blob = await renderTimelapseVideo(frames, 24);
-      showReviewScreen(blob, 'timelapse.webm', 'video/webm', true);
+      let blob = null;
+      try {
+        blob = await renderTimelapseOnServer(frames, 12);
+      } catch (serverErr) {
+        console.error('[TIMELAPSE ERROR]: server render —', serverErr);
+        showMicroToast('Server render unavailable, encoding on device…');
+        blob = await renderTimelapseClient(frames, 12);
+      }
+      if (!blob || blob.size < 500) throw new Error('Timelapse output empty');
+      const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
+      showReviewScreen(blob, 'timelapse.' + ext, blob.type || 'video/webm', true);
     } catch (e) {
       console.error('[TIMELAPSE ERROR]: ', e);
-      showMicroToast('Timelapse render failed');
+      showMicroToast('Timelapse render failed: ' + (e.message || 'unknown error'));
       tlFrames = [];
     }
-  }
-
-  function renderTimelapseVideo(frames, fps) {
-    return new Promise((resolve, reject) => {
-      if (!frames || frames.length < 2) {
-        reject(new Error('Not enough frames'));
-        return;
-      }
-      const w = frames[0].width || 640;
-      const h = frames[0].height || 480;
-      const outCanvas = document.createElement('canvas');
-      outCanvas.width = w;
-      outCanvas.height = h;
-      const ctx = outCanvas.getContext('2d');
-
-      let rec = null;
-      let stream = null;
-      try {
-        stream = outCanvas.captureStream(fps);
-      } catch (e) {
-        reject(new Error('Canvas captureStream not supported'));
-        return;
-      }
-
-      const mimeTypes = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4'
-      ];
-      for (const mime of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(mime)) {
-          try {
-            rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
-            break;
-          } catch (e) {}
-        }
-      }
-      if (!rec) {
-        try { rec = new MediaRecorder(stream); } catch (e) { reject(e); return; }
-      }
-
-      const chunks = [];
-      rec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 2) chunks.push(e.data);
-      };
-      rec.onstop = () => {
-        if (chunks.length > 0) {
-          resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
-        } else {
-          reject(new Error('No video data recorded'));
-        }
-      };
-      rec.onerror = (e) => reject(e || new Error('MediaRecorder error'));
-
-      rec.start(500);
-
-      let i = 1;
-      const frameDuration = Math.max(1000 / fps, 16);
-      let drawnCount = 1;
-
-      function drawNextFrame() {
-        if (i >= frames.length) {
-          if (rec.state !== 'inactive') {
-            try { rec.requestData(); } catch (e) {}
-            setTimeout(() => {
-              try { if (rec.state !== 'inactive') rec.stop(); } catch (e) {}
-            }, 400);
-          }
-          return;
-        }
-        const f = frames[i];
-        if (!f || !f.width) { i++; drawNextFrame(); return; }
-        ctx.clearRect(0, 0, w, h);
-        try {
-          ctx.drawImage(f, 0, 0, w, h);
-          drawnCount++;
-        } catch (e) {
-          i++;
-          drawNextFrame();
-          return;
-        }
-        i++;
-        setTimeout(drawNextFrame, frameDuration);
-      }
-
-      // Wait a tick for recorder to start, then draw first frame and begin sequence
-      setTimeout(() => {
-        try {
-          ctx.drawImage(frames[0], 0, 0, w, h);
-        } catch (e) {}
-        setTimeout(drawNextFrame, frameDuration);
-      }, 50);
-    });
   }
 
   // ─── Draft Queue ───
