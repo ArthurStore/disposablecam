@@ -72,6 +72,9 @@
   let exposureDragging = false;
   let exposureStartY = 0;
   let exposureStartLevel = 0.5;
+  let aeAfLocked = false;
+  let focusLongPressTimer = null;
+  let isCapturing = false;
 
   // ─── DOM refs ───
   const registrationModal = document.getElementById('registration-modal');
@@ -88,18 +91,14 @@
   const zoomLayer = document.getElementById('zoom-layer');
   const canvas = document.getElementById('capture-canvas');
   const captureBtn = document.getElementById('capture-btn');
-  const captureBtnLs = document.getElementById('capture-btn-ls');
   const rotateBtn = document.getElementById('rotate-btn');
-  const rotateBtnLs = document.getElementById('rotate-btn-ls');
   const flashBtn = document.getElementById('flash-btn');
   const recordingIndicator = document.getElementById('recording-indicator');
   const recTimer = document.getElementById('rec-timer');
   const tlIndicator = document.getElementById('timelapse-indicator');
   const tlFrameCountEl = document.getElementById('tl-frame-count');
   const galleryBtn = document.getElementById('gallery-btn');
-  const galleryBtnLs = document.getElementById('gallery-btn-ls');
   const galleryThumb = document.getElementById('gallery-thumb');
-  const galleryThumbLs = document.getElementById('gallery-thumb-ls');
   const welcomeCover = document.getElementById('welcome-cover');
   const welcomeEventName = document.getElementById('welcome-event-name');
   const welcomeEventSubtitle = document.getElementById('welcome-event-subtitle');
@@ -125,8 +124,10 @@
   const momentsCount = document.getElementById('moments-count');
   const settingsPanel = document.getElementById('settings-panel');
   const settingsClose = document.getElementById('settings-close');
-  const gridToggle = document.getElementById('grid-toggle');
-  const continuousToggle = document.getElementById('continuous-toggle');
+  const gridOff = document.getElementById('grid-off');
+  const gridOn = document.getElementById('grid-on');
+  const shootSingle = document.getElementById('shoot-single');
+  const shootContinuous = document.getElementById('shoot-continuous');
   const draftBadge = document.getElementById('draft-badge');
   const draftCount = document.getElementById('draft-count');
   const draftReviewPanel = document.getElementById('draft-review-panel');
@@ -242,11 +243,10 @@
   function truncateName(fullName) {
     if (!fullName) return '';
     const words = fullName.trim().split(/\s+/);
-    if (words.length < 3) return fullName;
-    const first = words[0];
-    const rest = words.slice(1);
-    const abbreviated = rest.map(w => w.charAt(0).toUpperCase() + '.').join(' ');
-    return first + ' ' + abbreviated;
+    if (words.length <= 2) return fullName.trim();
+    const firstTwo = words.slice(0, 2).join(' ');
+    const initials = words.slice(2).map((w) => w.charAt(0).toUpperCase() + '.').join(' ');
+    return firstTwo + ' ' + initials;
   }
 
   // ─── Orientation Modal ───
@@ -272,65 +272,105 @@
     const isLandscape = window.innerWidth > window.innerHeight;
     const profileText = document.querySelector('.profile-text');
     const counter = document.getElementById('moments-counter');
-    const recInd = document.getElementById('recording-indicator');
-    const tlInd = document.getElementById('timelapse-indicator');
     if (profileText) profileText.classList.toggle('smart-rotate', isLandscape);
     if (counter) counter.classList.toggle('smart-rotate', isLandscape);
-    if (recInd) recInd.classList.toggle('smart-rotate', isLandscape);
-    if (tlInd) tlInd.classList.toggle('smart-rotate', isLandscape);
   }
   window.addEventListener('resize', updateOrientationStyles);
   window.addEventListener('orientationchange', updateOrientationStyles);
 
-  // ─── Touch-to-Focus & Exposure ───
+  // ─── Touch-to-Focus, Long-Press AE/AF Lock & Exposure ───
   function setupFocusOverlay() {
     if (!focusOverlay) return;
     let focusTimer = null;
+    let tapStartX = 0;
+    let tapStartY = 0;
+    let longPressFired = false;
 
-    focusOverlay.addEventListener('click', (e) => {
-      // Don't trigger focus if tapping on controls
-      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom') || e.target.closest('.vf-landscape-sidebar')) return;
-      e.preventDefault();
-      e.stopPropagation();
-
-      const rect = viewfinder.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+    function showFocusAt(x, y, locked) {
       focusBoxX = x;
       focusBoxY = y;
       focusActive = true;
-
+      aeAfLocked = locked;
       if (focusBox) {
         focusBox.style.left = x + 'px';
         focusBox.style.top = y + 'px';
         focusBox.classList.remove('hidden');
       }
-      if (exposureSlider) exposureSlider.classList.remove('hidden');
-      vibrate(20);
+      if (exposureSlider) exposureSlider.classList.toggle('hidden', !locked);
+      vibrate(locked ? 40 : 20);
+      lockExposureAtPoint(x / viewfinder.getBoundingClientRect().width, y / viewfinder.getBoundingClientRect().height);
+    }
 
-      // Try to lock camera exposure via constraints
-      lockExposureAtPoint(x / rect.width, y / rect.height);
-
+    function hideFocus() {
       if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => {
+      focusTimer = null;
+      if (!aeAfLocked) {
         if (focusBox) focusBox.classList.add('hidden');
         if (exposureSlider) exposureSlider.classList.add('hidden');
         focusActive = false;
         unlockExposure();
-      }, 4000);
+      }
+    }
+
+    function onPointerDown(e) {
+      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom')) return;
+      if (aeAfLocked) {
+        aeAfLocked = false;
+        unlockExposure();
+        if (focusBox) focusBox.classList.add('hidden');
+        if (exposureSlider) exposureSlider.classList.add('hidden');
+        focusActive = false;
+      }
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const rect = viewfinder.getBoundingClientRect();
+      tapStartX = clientX - rect.left;
+      tapStartY = clientY - rect.top;
+      longPressFired = false;
+
+      if (focusLongPressTimer) clearTimeout(focusLongPressTimer);
+      focusLongPressTimer = setTimeout(() => {
+        longPressFired = true;
+        showFocusAt(tapStartX, tapStartY, true);
+        if (focusTimer) clearTimeout(focusTimer);
+      }, 1000);
+    }
+
+    function onPointerUp(e) {
+      if (focusLongPressTimer) {
+        clearTimeout(focusLongPressTimer);
+        focusLongPressTimer = null;
+      }
+      if (longPressFired) return;
+      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom')) return;
+
+      const rect = viewfinder.getBoundingClientRect();
+      showFocusAt(tapStartX, tapStartY, false);
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(hideFocus, 1500);
+    }
+
+    focusOverlay.addEventListener('mousedown', onPointerDown);
+    focusOverlay.addEventListener('touchstart', onPointerDown, { passive: true });
+    focusOverlay.addEventListener('mouseup', onPointerUp);
+    focusOverlay.addEventListener('touchend', onPointerUp);
+
+    focusOverlay.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
     });
 
     // Exposure drag
     if (exposureThumb) {
       exposureThumb.addEventListener('mousedown', (e) => {
-        if (!focusActive) return;
+        if (!aeAfLocked) return;
         e.preventDefault();
         exposureDragging = true;
         exposureStartY = e.clientY;
         exposureStartLevel = exposureLevel;
       });
       exposureThumb.addEventListener('touchstart', (e) => {
-        if (!focusActive || e.touches.length !== 1) return;
+        if (!aeAfLocked || e.touches.length !== 1) return;
         e.preventDefault();
         exposureDragging = true;
         exposureStartY = e.touches[0].clientY;
@@ -431,15 +471,44 @@
         galleryThumb.style.backgroundImage = '';
       }
     }
-    if (galleryThumbLs) {
-      if (latest) {
-        galleryThumbLs.classList.add('has-photo');
-        galleryThumbLs.style.backgroundImage = `url('${url('uploads/' + latest.filename)}')`;
-      } else {
-        galleryThumbLs.classList.remove('has-photo');
-        galleryThumbLs.style.backgroundImage = '';
-      }
+  }
+
+  function releaseMediaStream() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try { mediaRecorder.stop(); } catch (e) {}
     }
+    mediaRecorder = null;
+    isRecording = false;
+    if (tlIntervalId) {
+      clearInterval(tlIntervalId);
+      tlIntervalId = null;
+    }
+    tlCapturing = false;
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((t) => t.stop());
+      mediaStream = null;
+    }
+    if (video) video.srcObject = null;
+    aeAfLocked = false;
+    focusActive = false;
+    if (focusBox) focusBox.classList.add('hidden');
+    if (exposureSlider) exposureSlider.classList.add('hidden');
+  }
+
+  function applyCaptionOverlay(parent, caption, yPercent) {
+    if (!caption) return;
+    const capEl = document.createElement('div');
+    capEl.className = 'gallery-caption-overlay snap-caption-bar';
+    capEl.style.top = (yPercent != null ? yPercent : 50) + '%';
+    capEl.innerHTML = `<span>${escapeHtml(caption)}</span>`;
+    parent.appendChild(capEl);
+  }
+
+  function detectLandscapeMedia(el) {
+    if (!el) return false;
+    if (el.videoWidth && el.videoHeight) return el.videoWidth > el.videoHeight;
+    if (el.naturalWidth && el.naturalHeight) return el.naturalWidth > el.naturalHeight;
+    return false;
   }
 
   async function refreshGalleryThumb() {
@@ -572,6 +641,7 @@
 
   logoutBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to logout?')) {
+      releaseMediaStream();
       localStorage.removeItem('dc_user');
       location.reload();
     }
@@ -590,22 +660,42 @@
     settingsBtn.classList.remove('active');
   });
 
-  gridToggle.addEventListener('click', () => {
-    vibrate(15);
-    gridEnabled = !gridEnabled;
-    gridToggle.textContent = gridEnabled ? 'ON' : 'OFF';
-    gridToggle.setAttribute('aria-pressed', String(gridEnabled));
-    gridOverlay.classList.toggle('hidden', !gridEnabled);
-  });
+  function setGridEnabled(on) {
+    gridEnabled = on;
+    if (gridOff) gridOff.classList.toggle('active', !on);
+    if (gridOn) gridOn.classList.toggle('active', on);
+    gridOverlay.classList.toggle('hidden', !on);
+  }
 
-  continuousToggle.addEventListener('click', () => {
-    vibrate(15);
-    continuousMode = !continuousMode;
-    continuousToggle.textContent = continuousMode ? 'ON' : 'OFF';
-    continuousToggle.setAttribute('aria-pressed', String(continuousMode));
-    if (continuousMode) showMicroToast('Continuous mode ON — photos queue to drafts');
-    else showMicroToast('Continuous mode OFF');
-  });
+  function setContinuousMode(on) {
+    continuousMode = on;
+    if (shootSingle) shootSingle.classList.toggle('active', !on);
+    if (shootContinuous) shootContinuous.classList.toggle('active', on);
+  }
+
+  if (gridOff) {
+    gridOff.addEventListener('click', () => { vibrate(15); setGridEnabled(false); });
+  }
+  if (gridOn) {
+    gridOn.addEventListener('click', () => { vibrate(15); setGridEnabled(true); });
+  }
+  if (shootSingle) {
+    shootSingle.addEventListener('click', () => {
+      vibrate(15);
+      setContinuousMode(false);
+      showMicroToast('Shooting mode: Single');
+    });
+  }
+  if (shootContinuous) {
+    shootContinuous.addEventListener('click', () => {
+      vibrate(15);
+      setContinuousMode(true);
+      showMicroToast('Shooting mode: Continuous — photos queue to drafts');
+    });
+  }
+
+  setGridEnabled(false);
+  setContinuousMode(false);
 
   document.querySelectorAll('.timer-opt').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -634,7 +724,7 @@
     // Sync all mode pills (portrait + landscape)
     document.querySelectorAll('.mode-pill').forEach((b) => b.classList.toggle('active', b.dataset.mode === newMode));
     captureBtn.classList.toggle('video-mode', currentMode === 'video' || currentMode === 'timelapse');
-    if (captureBtnLs) captureBtnLs.classList.toggle('video-mode', currentMode === 'video' || currentMode === 'timelapse');
+    releaseMediaStream();
     initCamera(false);
     showMicroToast(newMode.toUpperCase() + ' mode');
   }
@@ -671,7 +761,7 @@
   // ─── Camera ───
   async function tryUltraWideCamera() {
     try {
-      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      releaseMediaStream();
 
       // Try native ultra-wide via facingMode + zoom constraint
       const constraints = {
@@ -728,7 +818,11 @@
 
   async function initCamera(requestUltraWide) {
     try {
-      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((t) => t.stop());
+        mediaStream = null;
+      }
+      if (video && video.srcObject) video.srcObject = null;
       const constraints = {
         video: {
           facingMode: currentFacingMode,
@@ -779,19 +873,9 @@
     mirrorOverride = null;
     currentZoomPreset = 1;
     document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
+    releaseMediaStream();
     initCamera(false);
   });
-
-  if (rotateBtnLs) {
-    rotateBtnLs.addEventListener('click', () => {
-      vibrate(30);
-      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-      mirrorOverride = null;
-      currentZoomPreset = 1;
-      document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
-      initCamera(false);
-    });
-  }
 
   // ─── Zoom — clamped to prevent black borders ───
   function setZoom(level) {
@@ -879,7 +963,6 @@
   }
 
   captureBtn.addEventListener('click', handleCaptureTrigger);
-  if (captureBtnLs) captureBtnLs.addEventListener('click', handleCaptureTrigger);
 
   // Long-press for video
   captureBtn.addEventListener('touchstart', () => {
@@ -888,7 +971,7 @@
       document.querySelectorAll('.mode-pill').forEach((b) => b.classList.toggle('active', b.dataset.mode === 'video'));
       currentMode = 'video';
       captureBtn.classList.add('video-mode');
-      if (captureBtnLs) captureBtnLs.classList.add('video-mode');
+      releaseMediaStream();
       initCamera(false).then(() => startRecording());
     }, 800);
   }, { passive: true });
@@ -950,35 +1033,59 @@
 
   // ─── Take Photo ───
   async function takePhoto() {
-    vibrate(50);
-    playShutterSound();
+    if (isCapturing) return;
+    isCapturing = true;
 
-    if (flashMode === 'on' || flashMode === 'auto') {
-      await applyFlash();
-      if (flashMode === 'auto') {
-        setTimeout(() => {
-          flashMode = 'off'; flashBtn.dataset.mode = 'off';
-          flashBtn.querySelector('.flash-off').classList.remove('hidden');
-          flashBtn.querySelector('.flash-on').classList.add('hidden');
-          applyFlash();
-        }, 300);
+    try {
+      if (!video.videoWidth || !video.videoHeight) {
+        await new Promise((resolve) => {
+          if (video.videoWidth) return resolve();
+          const onReady = () => { video.removeEventListener('loadeddata', onReady); resolve(); };
+          video.addEventListener('loadeddata', onReady);
+          setTimeout(resolve, 150);
+        });
       }
+
+      vibrate(50);
+      playShutterSound();
+
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (video.classList.contains('mirrored')) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
+      ctx.drawImage(video, 0, 0, w, h);
+
+      const flashPromise = (flashMode === 'on' || flashMode === 'auto') ? applyFlash() : Promise.resolve();
+      flashPromise.catch(() => {});
+
+      canvas.toBlob((blob) => {
+        isCapturing = false;
+        if (!blob) {
+          showMicroToast('Capture failed — try again');
+          return;
+        }
+        if (continuousMode) {
+          addToDraftQueue(blob, 'photo.jpg', 'image/jpeg');
+        } else {
+          showReviewScreen(blob, 'photo.jpg', 'image/jpeg', false);
+        }
+        if (flashMode === 'auto') {
+          setTimeout(() => {
+            flashMode = 'off';
+            flashBtn.dataset.mode = 'off';
+            flashBtn.querySelector('.flash-off').classList.remove('hidden');
+            flashBtn.querySelector('.flash-on').classList.add('hidden');
+            applyFlash();
+          }, 300);
+        }
+      }, 'image/jpeg', 0.92);
+    } catch (err) {
+      isCapturing = false;
+      console.error('Photo capture error:', err);
+      showMicroToast('Capture failed — try again');
     }
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (video.classList.contains('mirrored')) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(video, 0, 0);
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      if (continuousMode) {
-        addToDraftQueue(blob, 'photo.jpg', 'image/jpeg');
-      } else {
-        showReviewScreen(blob, 'photo.jpg', 'image/jpeg', false);
-      }
-    }, 'image/jpeg', 0.92);
   }
 
   // ─── Video Recording ───
@@ -1003,7 +1110,6 @@
     mediaRecorder.start(100);
     isRecording = true;
     captureBtn.classList.add('recording');
-    if (captureBtnLs) captureBtnLs.classList.add('recording');
     recordingIndicator.classList.remove('hidden');
     recStart = Date.now();
     recTimer.textContent = '00:00';
@@ -1017,7 +1123,6 @@
     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     isRecording = false;
     captureBtn.classList.remove('recording');
-    if (captureBtnLs) captureBtnLs.classList.remove('recording');
     recordingIndicator.classList.add('hidden');
     if (recTimerId) { clearInterval(recTimerId); recTimerId = null; }
     vibrate(100);
@@ -1030,7 +1135,6 @@
     tlFrames = [];
     tlFrameCount = 0;
     captureBtn.classList.add('recording');
-    if (captureBtnLs) captureBtnLs.classList.add('recording');
     tlIndicator.classList.remove('hidden');
     tlFrameCountEl.textContent = '0';
     vibrate([50, 50, 50]);
@@ -1057,7 +1161,6 @@
     tlIntervalId = null;
     tlCapturing = false;
     captureBtn.classList.remove('recording');
-    if (captureBtnLs) captureBtnLs.classList.remove('recording');
     tlIndicator.classList.add('hidden');
     vibrate(100);
 
@@ -1070,7 +1173,7 @@
       const blob = await renderTimelapseVideo(frames, 24);
       showReviewScreen(blob, 'timelapse.webm', 'video/webm', true);
     } catch (e) {
-      console.error('Timelapse render error:', e);
+      console.error('[TIMELAPSE ERROR]: ', e);
       showMicroToast('Timelapse render failed');
       tlFrames = [];
     }
@@ -1211,7 +1314,8 @@
     updateDraftBadge();
     showMicroToast(`Uploading ${items.length} items…`);
     for (const item of items) {
-      await uploadMedia(item.blob, item.filename, item.mimetype, item.caption, 'bottom');
+      const yPos = item.snapBarY != null ? item.snapBarY : 50;
+      await uploadMedia(item.blob, item.filename, item.mimetype, item.caption, yPos < 50 ? 'top' : 'bottom', yPos);
       URL.revokeObjectURL(item.objUrl);
     }
     refreshGalleryThumb();
@@ -1224,7 +1328,9 @@
     // Save current caption
     item.caption = draftCaptionInput.value.trim();
     draftReviewPanel.classList.add('hidden');
-    await uploadMedia(item.blob, item.filename, item.mimetype, item.caption, 'bottom');
+    await uploadMedia(item.blob, item.filename, item.mimetype, item.caption,
+      (item.snapBarY != null && item.snapBarY < 50) ? 'top' : 'bottom',
+      item.snapBarY != null ? item.snapBarY : 50);
     URL.revokeObjectURL(item.objUrl);
     draftQueue.splice(draftViewIndex, 1);
     updateDraftBadge();
@@ -1308,9 +1414,16 @@
       v.src = item.objUrl; v.controls = true; v.autoplay = true;
       v.muted = true; v.playsInline = true; v.loop = true;
       draftViewerMedia.appendChild(v);
+      v.addEventListener('loadedmetadata', () => {
+        draftViewerMedia.classList.toggle('landscape-media', detectLandscapeMedia(v));
+      });
     } else {
       const img = document.createElement('img');
       img.src = item.objUrl;
+      img.decoding = 'async';
+      img.addEventListener('load', () => {
+        draftViewerMedia.classList.toggle('landscape-media', detectLandscapeMedia(img));
+      });
       draftViewerMedia.appendChild(img);
     }
 
@@ -1355,9 +1468,16 @@
       v.src = objUrl; v.controls = true; v.autoplay = true;
       v.muted = true; v.playsInline = true; v.loop = true;
       reviewMedia.appendChild(v);
+      v.addEventListener('loadedmetadata', () => {
+        reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(v));
+      });
     } else {
       const img = document.createElement('img');
       img.src = objUrl;
+      img.decoding = 'async';
+      img.addEventListener('load', () => {
+        reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(img));
+      });
       reviewMedia.appendChild(img);
     }
 
@@ -1445,12 +1565,13 @@
     reviewScreen.classList.add('hidden');
     appEl.classList.remove('hidden');
     reviewMedia.innerHTML = '';
-    uploadMedia(blob, filename, mimetype, caption, 'bottom');
+    const capY = snapBarY;
+    uploadMedia(blob, filename, mimetype, caption, capY < 50 ? 'top' : 'bottom', capY);
     pendingCapture = null;
   });
 
   // ─── Upload ───
-  async function uploadMedia(blob, filename, mimetype, caption, capPos) {
+  async function uploadMedia(blob, filename, mimetype, caption, capPos, capY) {
     uploadProgress.classList.remove('hidden');
     progressFill.style.width = '30%';
 
@@ -1461,6 +1582,7 @@
     formData.append('gender', currentUser.gender);
     formData.append('caption', caption || '');
     formData.append('captionPosition', capPos || 'bottom');
+    formData.append('captionYOffset', String(capY != null ? capY : 50));
 
     const isVideo = mimetype && mimetype.startsWith('video');
     const controller = new AbortController();
@@ -1495,9 +1617,6 @@
   const DOWNLOAD_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
   galleryBtn.addEventListener('click', () => { vibrate(20); loadGallery(); galleryModal.classList.remove('hidden'); });
-  if (galleryBtnLs) {
-    galleryBtnLs.addEventListener('click', () => { vibrate(20); loadGallery(); galleryModal.classList.remove('hidden'); });
-  }
   galleryModalClose.addEventListener('click', () => galleryModal.classList.add('hidden'));
   galleryModal.addEventListener('click', (e) => { if (e.target === galleryModal) galleryModal.classList.add('hidden'); });
 
@@ -1514,15 +1633,38 @@
       photos.forEach((p) => {
         const item = document.createElement('div');
         item.className = 'gallery-item';
+        const mediaWrap = document.createElement('div');
+        mediaWrap.style.cssText = 'position:relative;width:100%;height:100%;';
         if (p.fileType === 'video') {
-          item.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video><span class="video-badge">▶</span>`;
+          const vid = document.createElement('video');
+          vid.src = url('uploads/' + p.filename);
+          vid.muted = true;
+          vid.preload = 'metadata';
+          mediaWrap.appendChild(vid);
+          const badge = document.createElement('span');
+          badge.className = 'video-badge';
+          badge.textContent = '▶';
+          mediaWrap.appendChild(badge);
         } else {
-          item.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="Photo" loading="lazy">`;
+          const img = document.createElement('img');
+          img.src = url('uploads/' + p.filename);
+          img.alt = 'Photo';
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          img.addEventListener('load', () => {
+            if (img.naturalWidth > img.naturalHeight) item.classList.add('landscape-item');
+          });
+          mediaWrap.appendChild(img);
         }
         if (p.caption) {
-          item.innerHTML += `<span class="item-caption">${escapeHtml(p.caption)}</span>`;
+          applyCaptionOverlay(mediaWrap, p.caption, p.captionYOffset != null ? p.captionYOffset : (p.captionPosition === 'top' ? 25 : 75));
         }
-        item.innerHTML += `<div class="item-actions"><button class="download-btn" title="Download">${DOWNLOAD_SVG}</button><button class="delete-btn" data-id="${p._id}" title="Delete">${TRASH_SVG}</button></div>`;
+        item.appendChild(mediaWrap);
+
+        const actions = document.createElement('div');
+        actions.className = 'item-actions';
+        actions.innerHTML = `<button class="download-btn" title="Download">${DOWNLOAD_SVG}</button><button class="delete-btn" data-id="${p._id}" title="Delete">${TRASH_SVG}</button>`;
+        item.appendChild(actions);
         item.addEventListener('click', (e) => {
           if (e.target.closest('.delete-btn') || e.target.closest('.download-btn')) return;
           openMediaModal(p);
@@ -1555,15 +1697,23 @@
       const v = document.createElement('video');
       v.src = url('uploads/' + p.filename); v.controls = true; v.autoplay = true;
       wrap.appendChild(v);
+      v.addEventListener('loadedmetadata', () => {
+        if (v.videoWidth > v.videoHeight) wrap.classList.add('landscape-media');
+      });
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + p.filename);
+      img.decoding = 'async';
+      img.addEventListener('load', () => {
+        if (img.naturalWidth > img.naturalHeight) wrap.classList.add('landscape-media');
+      });
       wrap.appendChild(img);
     }
-    // Snapchat-style caption overlay
     if (p.caption) {
       const capEl = document.createElement('div');
-      capEl.className = 'snap-modal-caption';
+      capEl.className = 'snap-modal-caption snap-caption-bar';
+      const yPos = p.captionYOffset != null ? p.captionYOffset : (p.captionPosition === 'top' ? 25 : 75);
+      capEl.style.top = yPos + '%';
       capEl.innerHTML = `<span>${escapeHtml(p.caption)}</span>`;
       wrap.appendChild(capEl);
     }

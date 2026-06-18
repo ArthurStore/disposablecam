@@ -50,8 +50,17 @@
   const addResult = document.getElementById('add-result');
 
   const usersTbody = document.getElementById('users-tbody');
+  const rosterSearch = document.getElementById('roster-search');
+  const rosterTotal = document.getElementById('roster-total');
+  const expandAllBtn = document.getElementById('expand-all');
+  const minimizeAllBtn = document.getElementById('minimize-all');
   const adminChatFeed = document.getElementById('admin-chat-feed');
   const adminPrivateFeed = document.getElementById('admin-private-feed');
+
+  let allUsers = [];
+  let rosterGenderFilter = 'all';
+  let rosterSortOrder = 'asc';
+  let rosterExpanded = true;
 
   const evtName = document.getElementById('evt-name');
   const evtSubtitle = document.getElementById('evt-subtitle');
@@ -345,45 +354,128 @@
   async function loadUsers() {
     try {
       const res = await fetch(api('admin/users'));
-      const users = await res.json();
-      usersTbody.innerHTML = '';
-      users.forEach(u => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(u.participantNumber)}</td>
-          <td>${escapeHtml(u.fullName)}</td>
-          <td>${u.gender === 'L' || u.gender === 'Laki - Laki' ? '♂ Male' : '♀ Female'}</td>
-          <td><span class="${u.isBanned ? 'status-banned' : 'status-active'}">${u.isBanned ? 'Banned' : 'Active'}</span></td>
-          <td class="action-cell">
-            <button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button>
-            <button class="btn-delete" data-id="${u._id}">Delete</button>
-          </td>
-        `;
-        usersTbody.appendChild(tr);
-      });
+      allUsers = await res.json();
+      renderUsersTable();
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    }
+  }
 
-      usersTbody.querySelectorAll('.btn-ban').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          try {
-            const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id) + '/ban'), { method: 'PATCH' });
-            if (res.ok) loadUsers();
-          } catch (err) {}
-        });
-      });
+  function formatGenderLabel(gender) {
+    const g = (gender || '').toString().trim();
+    if (g === 'L' || g.startsWith('Laki')) return 'Laki - Laki';
+    if (g === 'P' || g.startsWith('Perempuan')) return 'Perempuan';
+    return g || '—';
+  }
 
-      usersTbody.querySelectorAll('.btn-delete').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const row = btn.closest('tr');
-          const name = row.children[1].textContent;
-          const num = row.children[0].textContent;
-          if (!confirm(`Delete participant ${name} (#${num})? This revokes their access immediately.`)) return;
-          try {
-            const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id)), { method: 'DELETE' });
-            if (res.ok) { loadUsers(); loadStats(); }
-          } catch (err) {}
-        });
+  function getFilteredUsers() {
+    const q = (rosterSearch && rosterSearch.value || '').trim().toLowerCase();
+    let list = [...allUsers];
+
+    if (rosterGenderFilter !== 'all') {
+      list = list.filter((u) => formatGenderLabel(u.gender) === rosterGenderFilter);
+    }
+
+    if (q) {
+      list = list.filter((u) =>
+        (u.fullName || '').toLowerCase().includes(q) ||
+        String(u.participantNumber || '').toLowerCase().includes(q)
+      );
+    }
+
+    list.sort((a, b) => {
+      const na = parseInt(String(a.participantNumber).replace(/\D/g, ''), 10) || 0;
+      const nb = parseInt(String(b.participantNumber).replace(/\D/g, ''), 10) || 0;
+      return rosterSortOrder === 'asc' ? na - nb : nb - na;
+    });
+
+    return list;
+  }
+
+  function renderUsersTable() {
+    const users = getFilteredUsers();
+    if (rosterTotal) {
+      rosterTotal.textContent = `Total Registered Members: ${allUsers.length}`;
+    }
+    usersTbody.innerHTML = '';
+
+    if (!rosterExpanded) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" class="roster-collapsed-msg">Table minimized — click Expand All to show ${users.length} row(s)</td>`;
+      usersTbody.appendChild(tr);
+      return;
+    }
+
+    users.forEach((u) => {
+      const tr = document.createElement('tr');
+      const genderLabel = formatGenderLabel(u.gender);
+      tr.innerHTML = `
+        <td>${escapeHtml(u.participantNumber)}</td>
+        <td>${escapeHtml(u.fullName)}</td>
+        <td>${genderLabel === 'Laki - Laki' ? '♂ Laki - Laki' : '♀ Perempuan'}</td>
+        <td><span class="${u.isBanned ? 'status-banned' : 'status-active'}">${u.isBanned ? 'Banned' : 'Active'}</span></td>
+        <td class="action-cell">
+          <button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button>
+          <button class="btn-delete" data-id="${u._id}">Delete</button>
+        </td>
+      `;
+      usersTbody.appendChild(tr);
+    });
+
+    usersTbody.querySelectorAll('.btn-ban').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id) + '/ban'), { method: 'PATCH' });
+          if (res.ok) loadUsers();
+        } catch (err) {}
       });
-    } catch (err) {}
+    });
+
+    usersTbody.querySelectorAll('.btn-delete').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('tr');
+        const name = row.children[1].textContent;
+        const num = row.children[0].textContent;
+        if (!confirm(`Delete participant ${name} (#${num})? This revokes their access immediately.`)) return;
+        try {
+          const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id)), { method: 'DELETE' });
+          if (res.ok) { loadUsers(); loadStats(); }
+        } catch (err) {}
+      });
+    });
+  }
+
+  if (rosterSearch) {
+    rosterSearch.addEventListener('input', renderUsersTable);
+  }
+
+  document.querySelectorAll('.roster-filter').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-filter').forEach((b) => b.classList.toggle('active', b === btn));
+      rosterGenderFilter = btn.dataset.gender;
+      renderUsersTable();
+    });
+  });
+
+  document.querySelectorAll('.roster-sort-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-sort-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      rosterSortOrder = btn.dataset.order;
+      renderUsersTable();
+    });
+  });
+
+  if (expandAllBtn) {
+    expandAllBtn.addEventListener('click', () => {
+      rosterExpanded = true;
+      renderUsersTable();
+    });
+  }
+  if (minimizeAllBtn) {
+    minimizeAllBtn.addEventListener('click', () => {
+      rosterExpanded = false;
+      renderUsersTable();
+    });
   }
 
   function formatBytes(bytes) {

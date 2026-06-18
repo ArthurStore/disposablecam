@@ -144,7 +144,26 @@
 
     <!-- Participant list -->
     <section class="panel">
-      <h2>Participant List</h2>
+      <div class="roster-header">
+        <h2>Participant List</h2>
+        <p id="roster-total" class="roster-total">Total Registered Members: 0</p>
+      </div>
+      <div class="roster-toolbar">
+        <input type="search" id="roster-search" placeholder="Search by name or number…" autocomplete="off">
+        <div class="roster-filters">
+          <button id="filter-all" class="roster-filter active" data-gender="all">All</button>
+          <button id="filter-male" class="roster-filter" data-gender="Laki - Laki">Laki - Laki</button>
+          <button id="filter-female" class="roster-filter" data-gender="Perempuan">Perempuan</button>
+        </div>
+        <div class="roster-sort">
+          <button id="sort-asc" class="roster-sort-btn active" data-order="asc">No. ↑</button>
+          <button id="sort-desc" class="roster-sort-btn" data-order="desc">No. ↓</button>
+        </div>
+        <div class="roster-expand">
+          <button id="expand-all" class="btn-outline-sm">Expand All</button>
+          <button id="minimize-all" class="btn-outline-sm">Minimize All</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table id="users-table">
           <thead>

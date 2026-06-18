@@ -44,6 +44,23 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* ─── Global interactive transitions ─── */
+button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
+.setting-opt, .timer-opt, .tl-interval, .chat-tab, .dm-participant-item,
+.gallery-thumb-btn, .capture-btn, .vf-side-btn, .vf-flash-btn,
+.profile-logout-btn, .profile-settings-btn, .chat-fab, .btn-send, .btn-attach {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.capture-btn:active, .gallery-thumb-btn:active, .vf-side-btn:active {
+  transform: scale(0.96);
+}
+
 /* ─── Orientation Modal ─── */
 .orientation-modal {
   position: fixed; inset: 0; z-index: 9999;
@@ -58,13 +75,15 @@ html, body {
 }
 .orientation-modal-content {
   position: relative;
-  background: var(--grad-surface);
-  border: 1px solid var(--border);
+  background: rgba(12, 12, 16, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-lg);
   padding: 40px 32px 32px;
   text-align: center;
   width: 100%; max-width: 340px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
   animation: slideUp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .orientation-icon {
@@ -83,14 +102,11 @@ html, body {
 }
 .orientation-title {
   font-family: 'Montserrat', sans-serif;
-  font-size: 1.25rem;
-  font-weight: 800;
-  margin-bottom: 6px;
-}
-.orientation-subtitle {
-  font-size: 0.85rem;
-  color: var(--text-dim);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.45;
   margin-bottom: 20px;
+  color: var(--text);
 }
 .orientation-dont-show {
   display: flex; align-items: center; justify-content: center;
@@ -236,12 +252,10 @@ html, body {
 .exp-label-plus { color: #fff; }
 .exp-label-minus { color: rgba(255,255,255,0.5); }
 
-/* ─── Smart orientation rotation for text elements ─── */
+/* ─── Smart orientation rotation — user bar & shot counter only ─── */
 .profile-text.smart-rotate h1,
 .profile-text.smart-rotate span,
-.moments-counter.smart-rotate,
-#recording-indicator.smart-rotate,
-.timelapse-indicator.smart-rotate {
+.moments-counter.smart-rotate {
   transition: transform 0.3s ease;
 }
 
@@ -454,36 +468,35 @@ html, body {
 
 #capture-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
 
-/* ─── Top bar ─── */
+/* ─── Top bar — full-width solid black ─── */
 .vf-top {
   position: absolute;
   top: 0; left: 0; right: 0;
-  padding: calc(10px + var(--safe-top)) 14px 10px;
+  width: 100%;
+  padding: calc(8px + var(--safe-top)) 12px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   z-index: 20;
-  background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, transparent 100%);
+  background: #000;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
 }
 
-.profile-chip {
+.vf-top-profile {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px 6px 6px;
-  background: rgba(0, 0, 0, 0.45);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  max-width: 60vw;
+  min-width: 0;
+  flex: 1;
 }
 
-/* Top-right group: moments counter + flash */
-.vf-top-right {
+.vf-top-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .gender-icon {
@@ -496,8 +509,20 @@ html, body {
 .gender-icon.female { background: rgba(255, 92, 173, 0.2); }
 .gender-icon img { width: 18px; height: 18px; }
 
-.profile-text h1 { font-size: 0.82rem; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 28vw; }
-.profile-text span { font-size: 0.68rem; color: rgba(255,255,255,0.55); }
+.profile-text {
+  min-width: 0;
+  flex: 1;
+}
+.profile-text h1 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.profile-text span { font-size: 0.68rem; color: rgba(255,255,255,0.55); display: block; }
 
 .profile-logout-btn {
   width: 28px; height: 28px;
@@ -528,7 +553,13 @@ html, body {
 .profile-settings-btn:active { transform: scale(0.9) rotate(45deg); }
 .profile-settings-btn.active { background: rgba(255,181,71,0.15); border-color: var(--accent); color: var(--accent); }
 
-/* Moments counter — inline next to flash */
+/* Moments counter — beside gallery thumbnail */
+.gallery-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .moments-counter {
   display: flex;
   align-items: center;
@@ -538,7 +569,8 @@ html, body {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  flex-shrink: 0;
 }
 #moments-count {
   font-size: 0.88rem;
@@ -741,7 +773,9 @@ html, body {
   background: rgba(0,0,0,0.4);
   cursor: pointer;
   overflow: hidden;
+  flex-shrink: 0;
 }
+.gallery-thumb-btn:active { transform: scale(0.98); }
 .gallery-thumb-inner {
   display: grid;
   place-items: center;
@@ -765,10 +799,9 @@ html, body {
   padding: 4px;
   cursor: pointer;
   box-shadow: 0 0 0 2px var(--shutter-ring), 0 4px 20px rgba(0,0,0,0.4);
-  transition: transform 0.1s;
   flex-shrink: 0;
 }
-.capture-btn:active { transform: scale(0.93); }
+.capture-btn:active { transform: scale(0.96); }
 
 .capture-inner {
   width: 100%; height: 100%;
@@ -803,81 +836,8 @@ html, body {
   cursor: pointer;
   padding: 8px;
 }
+.vf-side-btn:active { transform: scale(0.98); }
 .vf-side-btn span { font-size: 0.65rem; color: rgba(255,255,255,0.7); font-weight: 500; }
-
-/* ─── Landscape right sidebar ─── */
-.vf-landscape-sidebar {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 88px;
-  display: none; /* shown in landscape via media query */
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: calc(16px + var(--safe-top)) 10px calc(16px + var(--safe-bottom));
-  background: linear-gradient(270deg, rgba(0,0,0,0.7) 0%, transparent 100%);
-  z-index: 22;
-}
-
-.landscape-only { display: none; }
-
-.ls-modes {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-}
-.ls-modes .mode-pill {
-  font-size: 0.55rem;
-  padding: 4px 10px;
-}
-
-.ls-zoom {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-}
-.ls-zoom-btn {
-  font-size: 0.65rem;
-  padding: 3px 10px;
-}
-
-.ls-capture {
-  width: 64px; height: 64px;
-}
-
-.ls-gallery {
-  width: 48px; height: 48px;
-  border-radius: 10px;
-  border: 2px solid rgba(255,255,255,0.85);
-  padding: 2px;
-  background: rgba(0,0,0,0.4);
-  cursor: pointer;
-  overflow: hidden;
-}
-.ls-gallery .gallery-thumb-inner {
-  display: grid; place-items: center;
-  width: 100%; height: 100%;
-  border-radius: 6px;
-  overflow: hidden;
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.7);
-}
-.ls-gallery .gallery-thumb-inner.has-photo {
-  background-size: cover;
-  background-position: center;
-}
-.ls-gallery .gallery-thumb-inner.has-photo svg { display: none; }
-
-.ls-flip {
-  flex-direction: column;
-}
-.ls-flip svg { width: 20px; height: 20px; }
-.ls-flip span { font-size: 0.6rem; }
 
 /* ─── Upload progress ─── */
 #upload-progress {
@@ -932,9 +892,17 @@ html, body {
 }
 .review-media img,
 .review-media video {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.review-media.landscape-media img,
+.review-media.landscape-media video {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
 }
 
 /* ─── Snapchat-style full-width caption bar ─── */
@@ -1038,9 +1006,10 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: 3500;
-  background: rgba(0, 0, 0, 0.88);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: rgba(8, 8, 12, 0.88);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   animation: fadeIn 0.3s ease;
@@ -1079,13 +1048,35 @@ html, body {
   overflow: hidden;
   background: var(--surface);
   cursor: pointer;
-  transition: transform 0.2s ease;
 }
-.gallery-item:active { transform: scale(0.98); }
+.gallery-item.landscape-item { aspect-ratio: 4 / 3; }
 .gallery-item img, .gallery-item video {
   width: 100%; height: 100%;
   object-fit: cover;
   display: block;
+}
+.gallery-item .gallery-caption-overlay {
+  position: absolute;
+  left: 0; right: 0;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.72);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.gallery-item .gallery-caption-overlay span {
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: #fff;
+  text-align: center;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .gallery-item .video-badge {
   position: absolute;
@@ -1095,16 +1086,7 @@ html, body {
   border-radius: 6px;
   font-size: 0.65rem;
 }
-.gallery-item .item-caption {
-  position: absolute;
-  bottom: 6px; left: 6px; right: 6px;
-  color: #fff;
-  font-size: 0.65rem;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.85);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
+.gallery-item .item-caption { display: none; }
 .gallery-item .item-actions {
   position: absolute;
   bottom: 6px; right: 6px;
@@ -1167,12 +1149,12 @@ html, body {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   height: 65vh; max-height: 540px;
-  background: rgba(20, 20, 26, 0.92);
-  -webkit-backdrop-filter: blur(24px);
-  backdrop-filter: blur(24px);
+  background: rgba(12, 12, 16, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border-top-left-radius: 22px;
   border-top-right-radius: 22px;
-  border-top: 1px solid var(--border);
+  border-top: 0.5px solid rgba(255, 255, 255, 0.12);
   z-index: 300;
   display: flex; flex-direction: column;
   transform: translateY(100%);
@@ -1180,6 +1162,27 @@ html, body {
 }
 .chat-panel.hidden { display: none !important; }
 .chat-panel.visible { transform: translateY(0); }
+
+.chat-disclaimer-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 14px 0;
+  padding: 12px 14px;
+  background: rgba(255, 181, 71, 0.14);
+  border: 0.5px solid rgba(255, 181, 71, 0.35);
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.chat-disclaimer-card svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent);
+}
 
 .chat-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1226,8 +1229,10 @@ html, body {
 .dm-select-dropdown {
   width: 100%;
   padding: 11px 14px;
-  background: rgba(255, 181, 71, 0.06);
-  border: 1px solid rgba(255, 181, 71, 0.3);
+  background: rgba(12, 12, 16, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 0.5px solid rgba(255, 181, 71, 0.3);
   border-radius: 10px;
   color: var(--text);
   font-size: 0.88rem;
@@ -1250,13 +1255,14 @@ html, body {
 .dm-participant-item {
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 0.5px solid transparent;
+  background: rgba(12, 12, 16, 0.45);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   color: var(--text);
   font-size: 0.85rem;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
 }
 .dm-participant-item:hover { background: var(--surface-2); }
 .dm-participant-item.selected {
@@ -1420,12 +1426,19 @@ html, body {
   border-radius: 12px;
   display: block;
 }
+.media-wrap.landscape-media img,
+.media-wrap.landscape-media video {
+  width: 100%;
+  height: auto;
+  max-height: 82vh;
+  object-fit: contain;
+}
 
 /* Snapchat-style caption overlay inside media modal */
 .snap-modal-caption {
   position: absolute;
   left: 0; right: 0;
-  bottom: 0;
+  transform: translateY(-50%);
   background: rgba(0, 0, 0, 0.72);
   padding: 14px 18px;
   display: flex;
@@ -1433,8 +1446,10 @@ html, body {
   justify-content: center;
   z-index: 10;
   min-height: 48px;
-  border-radius: 0 0 12px 12px;
+  pointer-events: none;
 }
+.snap-modal-caption.top,
+.snap-modal-caption.bottom { bottom: auto; top: auto; }
 .snap-modal-caption span {
   font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-size: 1.05rem;
@@ -1447,17 +1462,16 @@ html, body {
 
 .modal-close-btn {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: calc(12px + var(--safe-top));
+  right: calc(12px + env(safe-area-inset-right, 0px));
   width: 40px; height: 40px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 0.5px solid rgba(255,255,255,0.2);
   color: #fff;
   cursor: pointer;
   display: grid; place-items: center;
   z-index: 20;
-  transition: background 0.2s ease;
 }
 .modal-close-btn:hover { background: rgba(255,77,94,0.8); }
 
@@ -1483,9 +1497,9 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: 4500;
-  background: rgba(0, 0, 0, 0.88);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  background: rgba(8, 8, 12, 0.88);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   display: flex;
   flex-direction: column;
 }
@@ -1731,10 +1745,10 @@ html, body {
   top: 0; right: 0; bottom: 0;
   width: min(300px, 90vw);
   z-index: 2500;
-  background: rgba(16, 16, 22, 0.96);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border-left: 1px solid var(--border);
+  background: rgba(12, 12, 16, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-left: 0.5px solid rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
@@ -1780,20 +1794,38 @@ html, body {
 .setting-toggle {
   width: 60px; height: 30px;
   border-radius: 999px;
-  border: 1px solid var(--border);
+  border: 0.5px solid var(--border);
   background: var(--surface-2);
   color: var(--text-dim);
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 .setting-toggle[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);
   color: #0a0a0a;
 }
+
+.setting-opt {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 0.5px solid var(--border);
+  background: rgba(12, 12, 16, 0.55);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+.setting-opt.active {
+  background: rgba(255,181,71,0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.setting-binary { width: 100%; }
 
 .setting-options {
   display: flex;
@@ -1827,85 +1859,42 @@ html, body {
 }
 
 /* ══════════════════════════════════════
-   LANDSCAPE ORIENTATION
+   LANDSCAPE — portrait grid stays fixed; labels rotate sideways
    ══════════════════════════════════════ */
 @media (orientation: landscape) and (max-height: 600px) {
-  /* Hide portrait-only controls from the bottom bar */
-  .portrait-only {
-    display: none !important;
-  }
-
-  /* Show landscape sidebar */
-  .vf-landscape-sidebar {
-    display: flex;
-  }
-  .landscape-only {
-    display: flex;
-  }
-
-  /* Keep the bottom gallery thumb and flip button visible in landscape
-     (they mirror the portrait layout) */
-  .vf-controls-row {
-    justify-content: space-between;
-    padding: 4px 0;
-  }
-
-  /* Hide portrait capture button, use sidebar one */
-  #capture-btn {
-    display: none;
-  }
-
-  /* Shrink bottom strip */
-  .vf-bottom {
-    padding: 8px 80px 8px 16px; /* leave space for sidebar */
-    gap: 6px;
-    background: transparent;
-  }
-
-  /* Top bar compact */
   .vf-top {
-    padding: 6px 96px 6px 10px; /* leave space for sidebar */
+    padding: calc(6px + var(--safe-top)) 12px 6px;
   }
-  .profile-chip {
-    padding: 4px 6px 4px 4px;
-    gap: 6px;
-  }
-  .gender-icon { width: 24px; height: 24px; }
-  .gender-icon img { width: 14px; height: 14px; }
-  .profile-text h1 { font-size: 0.7rem; }
-  .profile-text span { font-size: 0.6rem; }
-  .profile-logout-btn { width: 22px; height: 22px; }
-  .profile-logout-btn svg { width: 11px; height: 11px; }
-  .profile-settings-btn { width: 22px; height: 22px; }
-  .profile-settings-btn svg { width: 11px; height: 11px; }
-  .vf-flash-btn { width: 36px; height: 36px; }
-  .vf-flash-btn svg { width: 18px; height: 18px; }
 
-  /* Recording/TL indicators */
+  .profile-text.smart-rotate h1,
+  .profile-text.smart-rotate span {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    max-width: none;
+    white-space: nowrap;
+  }
+
+  .moments-counter.smart-rotate {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    flex-direction: row;
+    padding: 8px 6px;
+  }
+
+  .mode-pill,
+  .zoom-preset-btn {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    padding: 10px 6px;
+    letter-spacing: 0.06em;
+  }
+
   #recording-indicator,
   .timelapse-indicator {
-    top: calc(56px + var(--safe-top));
+    top: calc(52px + var(--safe-top));
     font-size: 0.65rem;
     padding: 4px 10px;
-  }
-
-  /* Hide chat FAB and panel in landscape */
-  .chat-fab {
-    display: none !important;
-  }
-  .chat-panel {
-    display: none !important;
-  }
-
-  /* Smart rotation for profile text and counters */
-  .profile-text.smart-rotate h1,
-  .profile-text.smart-rotate span,
-  .moments-counter.smart-rotate {
-    transform: rotate(0deg);
-  }
-
-  /* Marquee banner in landscape */
-  .marquee-banner {
-    top: calc(48px + var(--safe-top));
   }
 }

@@ -143,7 +143,7 @@ router.post('/api/validate', async (req, res) => {
 router.post('/api/upload', handleUpload('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const { participantNumber, fullName, gender, caption, captionPosition } = req.body;
+    const { participantNumber, fullName, gender, caption, captionPosition, captionYOffset } = req.body;
     const user = await User.findOne({ participantNumber });
     if (!user) return res.status(404).json({ error: 'Participant not found' });
     if (user.isBanned) return res.status(403).json({ error: 'Your account has been suspended' });
@@ -161,6 +161,7 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
       fileType,
       caption: caption || '',
       captionPosition: captionPosition === 'top' ? 'top' : 'bottom',
+      captionYOffset: Math.min(97, Math.max(3, parseFloat(captionYOffset) || 50)),
       fileSize: req.file.size
     });
 
@@ -173,12 +174,13 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
       fileType: photo.fileType,
       caption: photo.caption,
       captionPosition: photo.captionPosition,
+      captionYOffset: photo.captionYOffset,
       uploadedAt: photo.uploadedAt
     });
 
     res.json({ success: true, photo });
   } catch (err) {
-    console.error('Upload error:', err);
+    console.error('[UPLOAD FAILED LOG]: ', err);
     res.status(500).json({ error: 'Upload failed' });
   }
 });

@@ -56,11 +56,17 @@
     recoveryInProgress = true;
 
     try {
-      // Clear old LocalStorage data related to chat
       const chatKeys = Object.keys(localStorage).filter(k =>
         k.startsWith('chat_') || k.includes('session') || k.includes('socket')
       );
-      chatKeys.forEach(k => localStorage.removeItem(k));
+      chatKeys.forEach(k => {
+        try { localStorage.removeItem(k); } catch (e) {
+          console.error('Session recovery storage clear failed:', e);
+        }
+      });
+    } catch (e) {
+      console.error('Session recovery localStorage access failed:', e);
+    }
 
       // Force socket reconnection with fresh handshake
       if (socket.connected) {
@@ -78,6 +84,7 @@
         });
       });
 
+      if (chatUser) loadParticipants();
       return true;
     } catch (e) {
       return false;
@@ -470,12 +477,12 @@
       if (!incognitoDetected) {
         const recovered = await performAutoRecovery();
         if (recovered) {
-          // Retry loading after recovery
           try {
             const res = await fetchWithRetry('messages', 1);
             const messages = await res.json();
             chatMessages.innerHTML = '';
             messages.forEach(appendPublicMessage);
+            if (chatUser) loadParticipants();
             return;
           } catch (e) {}
         }

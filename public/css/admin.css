@@ -479,6 +479,69 @@ th {
 .btn-danger:active { transform: scale(0.97); }
 .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Participant roster toolbar */
+.roster-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.roster-header h2 { margin-bottom: 0; }
+.roster-total {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.roster-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.roster-toolbar input[type="search"] {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.88rem;
+  outline: none;
+}
+.roster-toolbar input[type="search"]:focus { border-color: var(--accent); }
+.roster-filters, .roster-sort, .roster-expand {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.roster-filter, .roster-sort-btn, .btn-outline-sm {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.roster-filter.active, .roster-sort-btn.active {
+  background: rgba(255, 181, 71, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-outline-sm:hover { border-color: var(--accent); color: var(--accent); }
+.roster-collapsed-msg {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 24px !important;
+  font-size: 0.85rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .admin-header {
