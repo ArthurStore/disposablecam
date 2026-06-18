@@ -149,6 +149,46 @@
     } catch (err) {}
   }
 
+  function cropImageTo9x16(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        const srcW = img.naturalWidth;
+        const srcH = img.naturalHeight;
+        const targetRatio = 9 / 16;
+        const srcRatio = srcW / srcH;
+        let cropW, cropH, sx, sy;
+        if (srcRatio > targetRatio) {
+          cropH = srcH;
+          cropW = Math.round(srcH * targetRatio);
+          sx = Math.round((srcW - cropW) / 2);
+          sy = 0;
+        } else {
+          cropW = srcW;
+          cropH = Math.round(srcW / targetRatio);
+          sx = 0;
+          sy = Math.round((srcH - cropH) / 2);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = 720;
+        canvas.height = 1280;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) reject(new Error('Crop failed'));
+          else resolve(blob);
+        }, 'image/jpeg', 0.9);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        reject(new Error('Image load failed'));
+      };
+      img.src = objUrl;
+    });
+  }
+
   function cropImageTo16x9(file) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -210,8 +250,9 @@
         return;
       }
       if (evtCoverFile.files[0]) {
+        const croppedWelcome = await cropImageTo9x16(evtCoverFile.files[0]);
         const fd = new FormData();
-        fd.append('cover', evtCoverFile.files[0]);
+        fd.append('cover', croppedWelcome, 'welcome-cover-9x16.jpg');
         const coverRes = await fetch(api('admin/event-cover'), { method: 'POST', body: fd });
         const coverData = await coverRes.json();
         if (coverRes.ok && coverData.coverImage) {

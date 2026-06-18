@@ -457,13 +457,15 @@ th {
   border: 1px solid var(--border);
 }
 .cover-preview-portrait {
-  height: 160px;
-  max-width: 120px;
+  width: 108px;
+  height: 192px;
+  aspect-ratio: 9 / 16;
 }
 .cover-preview-widescreen {
-  height: 120px;
+  width: 100%;
+  max-width: 320px;
   aspect-ratio: 16 / 9;
-  max-width: 100%;
+  height: auto;
 }
 
 /* ─── Danger panel ─── */

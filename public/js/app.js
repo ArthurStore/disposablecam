@@ -36,7 +36,6 @@
   let gridEnabled = false;
   let timerSeconds = 0;
   let continuousMode = false;
-  let tlInterval = 15;
   let timerActive = false;
   let timerCountdownId = null;
 
@@ -112,6 +111,12 @@
   const reviewCaptionInput = document.getElementById('review-caption-input');
   const reviewDiscardBtn = document.getElementById('review-discard-btn');
   const reviewUploadBtn = document.getElementById('review-upload-btn');
+  const reviewControls = document.getElementById('review-controls');
+  const timelapseSpeedPanel = document.getElementById('timelapse-speed-panel');
+  const tlSpeedSlider = document.getElementById('tl-speed-slider');
+  const tlSpeedValue = document.getElementById('tl-speed-value');
+  const tlSpeedPreviewBtn = document.getElementById('tl-speed-preview-btn');
+  let reviewObjUrl = null;
   const microToast = document.getElementById('micro-toast');
   const timerCountdownEl = document.getElementById('timer-countdown');
   const gridOverlay = document.getElementById('grid-overlay');
@@ -262,7 +267,9 @@
 
   // ─── Orientation layout hook ───
   function updateOrientationStyles() {
-    document.body.classList.toggle('landscape-ui', window.innerWidth > window.innerHeight);
+    const landscape = window.innerWidth > window.innerHeight;
+    document.body.classList.toggle('landscape-ui', landscape);
+    if (landscape && window.closeChatPanel) window.closeChatPanel();
   }
   window.addEventListener('resize', updateOrientationStyles);
   window.addEventListener('orientationchange', updateOrientationStyles);
@@ -615,14 +622,6 @@
       timerSeconds = parseInt(btn.dataset.seconds, 10);
       document.querySelectorAll('.timer-opt').forEach((b) => b.classList.toggle('active', b === btn));
       showMicroToast(timerSeconds === 0 ? 'Timer off' : `${timerSeconds}s timer set`);
-    });
-  });
-
-  document.querySelectorAll('.tl-interval').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      vibrate(15);
-      tlInterval = parseInt(btn.dataset.interval, 10);
-      document.querySelectorAll('.tl-interval').forEach((b) => b.classList.toggle('active', b === btn));
     });
   });
 
@@ -1043,11 +1042,7 @@
     vibrate(100);
   }
 
-  // ─── Timelapse (record video → server speed-up up to 100x) ───
-  function getTimelapseSpeed() {
-    return Math.min(100, Math.max(1, tlInterval));
-  }
-
+  // ─── Timelapse (record → preview with speed slider → upload) ───
   function startTimelapse() {
     if (!mediaStream || tlCapturing) return;
     tlCapturing = true;
@@ -1057,7 +1052,7 @@
     tlIndicator.classList.remove('hidden');
     if (tlFrameCountEl) tlFrameCountEl.textContent = 'REC';
     vibrate([50, 50, 50]);
-    showMicroToast(`Timelapse recording — ${getTimelapseSpeed()}x on finish`);
+    showMicroToast('Timelapse recording — tap stop when done');
 
     const options = { mimeType: 'video/webm;codecs=vp8,opus' };
     try { tlMediaRecorder = new MediaRecorder(mediaStream, options); }
@@ -1068,11 +1063,11 @@
     tlMediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) tlRecordedChunks.push(e.data);
     };
-    tlMediaRecorder.onstop = () => { processTimelapseRecording(); };
+    tlMediaRecorder.onstop = () => { finishTimelapseRecording(); };
     tlMediaRecorder.start(250);
   }
 
-  async function processTimelapseRecording() {
+  function finishTimelapseRecording() {
     const blob = new Blob(tlRecordedChunks, { type: tlMediaRecorder?.mimeType || 'video/webm' });
     tlRecordedChunks = [];
     tlMediaRecorder = null;
@@ -1081,31 +1076,63 @@
       showMicroToast('Timelapse too short — record longer');
       return;
     }
+    showTimelapseReviewScreen(blob);
+  }
 
-    const speed = getTimelapseSpeed();
-    showMicroToast(`Speeding up ${speed}x…`);
+  function showTimelapseReviewScreen(blob) {
+    pendingCapture = {
+      blob,
+      filename: 'timelapse-source.webm',
+      mimetype: blob.type || 'video/webm',
+      isVideo: true,
+      isTimelapse: true,
+      timelapseSpeed: 15
+    };
+    reviewCaptionInput.value = '';
+    snapCaptionText.textContent = '';
+    snapCaptionBar.style.display = 'none';
+    snapTapHint.classList.add('hidden');
+    if (timelapseSpeedPanel) timelapseSpeedPanel.classList.remove('hidden');
+    if (reviewControls) reviewControls.classList.add('timelapse-mode');
+    if (tlSpeedSlider) tlSpeedSlider.value = '15';
+    if (tlSpeedValue) tlSpeedValue.textContent = '15x';
 
-    try {
-      const formData = new FormData();
-      formData.append('video', blob, 'timelapse-source.webm');
-      formData.append('speed', String(speed));
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 180000);
-      const res = await fetch(api('timelapse-speedup'), { method: 'POST', body: formData, signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!res.ok) {
-        let msg = 'Timelapse speed-up failed';
-        try { const d = await res.json(); msg = d.error || d.detail || msg; } catch (e) {}
-        throw new Error(msg);
-      }
-      const outBlob = await res.blob();
-      if (!outBlob || outBlob.size < 500) throw new Error('Empty timelapse output');
-      const ext = (outBlob.type || '').includes('mp4') ? 'mp4' : 'webm';
-      showReviewScreen(outBlob, 'timelapse.' + ext, outBlob.type || 'video/webm', true);
-    } catch (e) {
-      console.error('[TIMELAPSE ERROR]: ', e);
-      showMicroToast('Timelapse failed: ' + (e.message || 'try again'));
+    reviewMedia.innerHTML = '';
+    if (reviewObjUrl) URL.revokeObjectURL(reviewObjUrl);
+    reviewObjUrl = URL.createObjectURL(blob);
+    const v = document.createElement('video');
+    v.src = reviewObjUrl;
+    v.controls = true;
+    v.playsInline = true;
+    v.muted = true;
+    v.loop = true;
+    reviewMedia.appendChild(v);
+    v.addEventListener('loadedmetadata', () => {
+      reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(v));
+    });
+
+    reviewScreen.classList.remove('hidden');
+    appEl.classList.add('hidden');
+  }
+
+  async function uploadTimelapseWithSpeed(sourceBlob, speed) {
+    showMicroToast(`Processing ${speed}x…`);
+    const formData = new FormData();
+    formData.append('video', sourceBlob, 'timelapse-source.webm');
+    formData.append('speed', String(speed));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+    const res = await fetch(api('timelapse-speedup'), { method: 'POST', body: formData, signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      let msg = 'Timelapse speed-up failed';
+      try { const d = await res.json(); msg = d.error || d.detail || msg; } catch (e) {}
+      throw new Error(msg);
     }
+    const outBlob = await res.blob();
+    if (!outBlob || outBlob.size < 500) throw new Error('Empty timelapse output');
+    const ext = (outBlob.type || '').includes('mp4') ? 'mp4' : 'webm';
+    await uploadMedia(outBlob, 'timelapse.' + ext, outBlob.type || 'video/mp4', '', 'bottom', 50);
   }
 
   function stopTimelapse() {
@@ -1116,7 +1143,7 @@
     if (tlMediaRecorder && tlMediaRecorder.state !== 'inactive') {
       try { tlMediaRecorder.stop(); } catch (e) {
         console.error('[TIMELAPSE ERROR]: stop recorder —', e);
-        processTimelapseRecording();
+        finishTimelapseRecording();
       }
     } else {
       showMicroToast('No timelapse recording to process');
@@ -1301,6 +1328,17 @@
     getContainer: () => draftSnapBar.parentElement
   });
 
+  function closeReviewScreen() {
+    pendingCapture = null;
+    reviewMedia.innerHTML = '';
+    snapCaptionBar.style.display = 'none';
+    if (reviewObjUrl) { URL.revokeObjectURL(reviewObjUrl); reviewObjUrl = null; }
+    if (timelapseSpeedPanel) timelapseSpeedPanel.classList.add('hidden');
+    if (reviewControls) reviewControls.classList.remove('timelapse-mode');
+    reviewScreen.classList.add('hidden');
+    appEl.classList.remove('hidden');
+  }
+
   // ─── Review Screen ───
   function showReviewScreen(blob, filename, mimetype, isVideo) {
     pendingCapture = { blob, filename, mimetype, isVideo };
@@ -1310,12 +1348,15 @@
     snapBarY = 50;
     snapCaptionBar.style.top = '50%';
     snapTapHint.classList.remove('hidden');
+    if (timelapseSpeedPanel) timelapseSpeedPanel.classList.add('hidden');
+    if (reviewControls) reviewControls.classList.remove('timelapse-mode');
 
     reviewMedia.innerHTML = '';
-    const objUrl = URL.createObjectURL(blob);
+    if (reviewObjUrl) URL.revokeObjectURL(reviewObjUrl);
+    reviewObjUrl = URL.createObjectURL(blob);
     if (isVideo) {
       const v = document.createElement('video');
-      v.src = objUrl; v.controls = true; v.autoplay = true;
+      v.src = reviewObjUrl; v.controls = true; v.autoplay = true;
       v.muted = true; v.playsInline = true; v.loop = true;
       reviewMedia.appendChild(v);
       v.addEventListener('loadedmetadata', () => {
@@ -1323,7 +1364,7 @@
       });
     } else {
       const img = document.createElement('img');
-      img.src = objUrl;
+      img.src = reviewObjUrl;
       img.decoding = 'async';
       img.addEventListener('load', () => {
         reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(img));
@@ -1400,24 +1441,52 @@
     getContainer: () => snapCaptionBar.parentElement
   });
 
+  if (tlSpeedSlider) {
+    tlSpeedSlider.addEventListener('input', () => {
+      const speed = parseInt(tlSpeedSlider.value, 10) || 1;
+      if (tlSpeedValue) tlSpeedValue.textContent = speed + 'x';
+      if (pendingCapture && pendingCapture.isTimelapse) pendingCapture.timelapseSpeed = speed;
+    });
+  }
+
+  if (tlSpeedPreviewBtn) {
+    tlSpeedPreviewBtn.addEventListener('click', () => {
+      const vid = reviewMedia.querySelector('video');
+      if (!vid) return;
+      const speed = parseInt(tlSpeedSlider?.value, 10) || 15;
+      vid.playbackRate = Math.min(speed, 16);
+      vid.currentTime = 0;
+      vid.play().catch(() => {});
+    });
+  }
+
   reviewDiscardBtn.addEventListener('click', () => {
-    pendingCapture = null;
-    reviewMedia.innerHTML = '';
-    snapCaptionBar.style.display = 'none';
-    reviewScreen.classList.add('hidden');
-    appEl.classList.remove('hidden');
+    closeReviewScreen();
   });
 
-  reviewUploadBtn.addEventListener('click', () => {
+  reviewUploadBtn.addEventListener('click', async () => {
     if (!pendingCapture) return;
+
+    if (pendingCapture.isTimelapse) {
+      const speed = pendingCapture.timelapseSpeed || parseInt(tlSpeedSlider?.value, 10) || 15;
+      reviewUploadBtn.disabled = true;
+      try {
+        await uploadTimelapseWithSpeed(pendingCapture.blob, speed);
+        closeReviewScreen();
+      } catch (e) {
+        console.error('[TIMELAPSE ERROR]: ', e);
+        showMicroToast('Timelapse failed: ' + (e.message || 'try again'));
+      } finally {
+        reviewUploadBtn.disabled = false;
+      }
+      return;
+    }
+
     const { blob, filename, mimetype } = pendingCapture;
     const caption = reviewCaptionInput.value.trim();
-    reviewScreen.classList.add('hidden');
-    appEl.classList.remove('hidden');
-    reviewMedia.innerHTML = '';
     const capY = snapBarY;
     uploadMedia(blob, filename, mimetype, caption, capY < 50 ? 'top' : 'bottom', capY);
-    pendingCapture = null;
+    closeReviewScreen();
   });
 
   // ─── Upload ───

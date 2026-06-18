@@ -127,14 +127,14 @@
         <!-- Bottom controls -->
         <div class="vf-bottom">
           <!-- Modes bar (hidden in landscape via CSS) -->
-          <div class="vf-modes-bar portrait-only">
+          <div class="vf-modes-bar">
             <button class="mode-pill active" data-mode="photo">PHOTO</button>
             <button class="mode-pill" data-mode="video">VIDEO</button>
             <button class="mode-pill" data-mode="timelapse">TIMELAPSE</button>
           </div>
 
-          <!-- Zoom presets (hidden in landscape via CSS) -->
-          <div class="vf-zoom-row portrait-only">
+          <!-- Zoom presets -->
+          <div class="vf-zoom-row">
             <button class="zoom-preset-btn" data-zoom="0.5">0.5×</button>
             <button class="zoom-preset-btn active" data-zoom="1">1×</button>
             <button class="zoom-preset-btn" data-zoom="2">2×</button>
@@ -208,6 +208,10 @@
         </select>
         <input type="search" id="dm-search" placeholder="Search & filter list below…" autocomplete="off">
         <div id="dm-participant-list" class="dm-participant-list"></div>
+        <div id="dm-selected-display" class="dm-selected-display">
+          <span id="dm-selected-label">—</span>
+          <button type="button" id="dm-change-recipient" class="dm-change-btn">Change</button>
+        </div>
         <input type="hidden" id="private-recipient" value="">
       </div>
       <div id="chat-messages" class="chat-messages"></div>
@@ -255,15 +259,6 @@
             <button id="shoot-continuous" class="setting-opt" data-shoot="continuous">Continuous</button>
           </div>
         </div>
-        <div class="setting-row" id="tl-interval-row">
-          <span class="setting-label">Timelapse Speed</span>
-          <div class="setting-options">
-            <button class="tl-interval" data-interval="5">5x</button>
-            <button class="tl-interval active" data-interval="15">15x</button>
-            <button class="tl-interval" data-interval="30">30x</button>
-            <button class="tl-interval" data-interval="100">100x</button>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -279,7 +274,15 @@
       <!-- Tap hint -->
       <div id="snap-tap-hint" class="snap-tap-hint">Tap photo to add caption</div>
     </div>
-    <div class="review-controls">
+    <div class="review-controls" id="review-controls">
+      <div id="timelapse-speed-panel" class="timelapse-speed-panel hidden">
+        <div class="tl-speed-header">
+          <span>Timelapse Speed</span>
+          <span id="tl-speed-value">15x</span>
+        </div>
+        <input type="range" id="tl-speed-slider" min="1" max="100" value="15" step="1">
+        <button type="button" id="tl-speed-preview-btn">Preview Speed</button>
+      </div>
       <input type="text" id="review-caption-input" placeholder="Add a caption…" maxlength="100">
       <div class="review-actions">
         <button id="review-discard-btn" class="review-btn discard">Discard</button>

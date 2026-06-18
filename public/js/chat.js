@@ -102,6 +102,9 @@
   const dmSearch = document.getElementById('dm-search');
   const dmSelect = document.getElementById('dm-select');
   const dmParticipantList = document.getElementById('dm-participant-list');
+  const dmSelectedDisplay = document.getElementById('dm-selected-display');
+  const dmSelectedLabel = document.getElementById('dm-selected-label');
+  const dmChangeRecipient = document.getElementById('dm-change-recipient');
   const chatAttachBtn = document.getElementById('chat-attach-btn');
   const chatUploadError = document.getElementById('chat-upload-error');
   const chatGalleryPicker = document.getElementById('chat-gallery-picker');
@@ -150,10 +153,14 @@
   });
 
   chatCloseBtn.addEventListener('click', () => {
+    closeChatPanel();
+  });
+
+  window.closeChatPanel = function () {
     chatVisible = false;
     chatPanel.classList.remove('visible');
     chatPanel.classList.add('hidden');
-  });
+  };
 
   chatTabPublic.addEventListener('click', () => switchChatMode('public'));
   chatTabPrivate.addEventListener('click', () => switchChatMode('private'));
@@ -163,14 +170,38 @@
     chatTabPublic.classList.toggle('active', mode === 'public');
     chatTabPrivate.classList.toggle('active', mode === 'private');
     privateRecipientBar.classList.toggle('hidden', mode !== 'private');
+    if (mode !== 'private') privateRecipientBar.classList.remove('recipient-picked');
     chatMessages.innerHTML = '';
     hideUploadError();
     if (mode === 'public') {
       loadHistory(true);
     } else {
       loadParticipants();
-      if (privateRecipient) loadPrivateHistory(true);
+      if (privateRecipient) {
+        showDmRecipientPicked(privateRecipientName, privateRecipient);
+        loadPrivateHistory(true);
+      } else {
+        showDmRecipientPicker();
+      }
     }
+  }
+
+  function showDmRecipientPicked(name, num) {
+    privateRecipientBar.classList.add('recipient-picked');
+    if (dmSelectedLabel) dmSelectedLabel.textContent = `${name} (#${num})`;
+    if (dmSearch) dmSearch.value = '';
+  }
+
+  function showDmRecipientPicker() {
+    privateRecipientBar.classList.remove('recipient-picked');
+    if (dmSelect) dmSelect.value = '';
+  }
+
+  if (dmChangeRecipient) {
+    dmChangeRecipient.addEventListener('click', () => {
+      showDmRecipientPicker();
+      if (dmSearch) dmSearch.focus();
+    });
   }
 
   // Search bar filters the list
@@ -261,6 +292,7 @@
     });
     if (dmSelect && dmSelect.value !== num) dmSelect.value = num;
 
+    showDmRecipientPicked(name, num);
     loadPrivateHistory(true);
   }
 
