@@ -15,7 +15,9 @@ body {
 /* ─── Hero ─── */
 .recap-hero {
   position: relative;
-  min-height: 420px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(56vw, 420px);
   display: flex;
   align-items: flex-end;
   overflow: hidden;

@@ -70,6 +70,8 @@
   const evtEnd = document.getElementById('evt-end');
   const evtCoverFile = document.getElementById('evt-cover-file');
   const evtCoverPreview = document.getElementById('evt-cover-preview');
+  const evtRecapCoverFile = document.getElementById('evt-recap-cover-file');
+  const evtRecapCoverPreview = document.getElementById('evt-recap-cover-preview');
   const evtSaveBtn = document.getElementById('evt-save-btn');
   const evtResult = document.getElementById('evt-result');
   const recapUrlHint = document.getElementById('recap-url-hint');
@@ -137,10 +139,54 @@
       if (cfg.coverImage) {
         evtCoverPreview.style.backgroundImage = `url('${url('uploads/' + cfg.coverImage)}')`;
       }
+      const recapCover = cfg.recapCoverImage || cfg.coverImage;
+      if (recapCover) {
+        evtRecapCoverPreview.style.backgroundImage = `url('${url('uploads/' + recapCover)}')`;
+      }
       const slug = cfg.recapSlug || 'moments';
       recapLink.href = 'recap/' + slug;
       recapUrlHint.textContent = `Recap album URL: …/recap/${slug}`;
     } catch (err) {}
+  }
+
+  function cropImageTo16x9(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        const srcW = img.naturalWidth;
+        const srcH = img.naturalHeight;
+        const targetRatio = 16 / 9;
+        const srcRatio = srcW / srcH;
+        let cropW, cropH, sx, sy;
+        if (srcRatio > targetRatio) {
+          cropH = srcH;
+          cropW = Math.round(srcH * targetRatio);
+          sx = Math.round((srcW - cropW) / 2);
+          sy = 0;
+        } else {
+          cropW = srcW;
+          cropH = Math.round(srcW / targetRatio);
+          sx = 0;
+          sy = Math.round((srcH - cropH) / 2);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) reject(new Error('Crop failed'));
+          else resolve(blob);
+        }, 'image/jpeg', 0.9);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        reject(new Error('Image load failed'));
+      };
+      img.src = objUrl;
+    });
   }
 
   evtSaveBtn.addEventListener('click', async () => {
@@ -172,6 +218,17 @@
           evtCoverPreview.style.backgroundImage = `url('${url('uploads/' + coverData.coverImage)}')`;
         }
         evtCoverFile.value = '';
+      }
+      if (evtRecapCoverFile.files[0]) {
+        const cropped = await cropImageTo16x9(evtRecapCoverFile.files[0]);
+        const fd = new FormData();
+        fd.append('cover', cropped, 'recap-cover-16x9.jpg');
+        const recapRes = await fetch(api('admin/event-recap-cover'), { method: 'POST', body: fd });
+        const recapData = await recapRes.json();
+        if (recapRes.ok && recapData.recapCoverImage) {
+          evtRecapCoverPreview.style.backgroundImage = `url('${url('uploads/' + recapData.recapCoverImage)}')`;
+        }
+        evtRecapCoverFile.value = '';
       }
       setResult(evtResult, 'Event settings saved', 'success');
       loadEventConfig();

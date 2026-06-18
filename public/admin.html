@@ -83,9 +83,14 @@
           <label>End Date<input type="date" id="evt-end"></label>
         </div>
         <div class="cover-upload">
-          <span>Welcome / Recap Cover</span>
+          <span>Welcome Cover (Portrait)</span>
           <input type="file" id="evt-cover-file" accept="image/*">
-          <div id="evt-cover-preview" class="cover-preview"></div>
+          <div id="evt-cover-preview" class="cover-preview cover-preview-portrait"></div>
+        </div>
+        <div class="cover-upload">
+          <span>Recap Thumbnail (16:9 Widescreen)</span>
+          <input type="file" id="evt-recap-cover-file" accept="image/*">
+          <div id="evt-recap-cover-preview" class="cover-preview cover-preview-widescreen"></div>
         </div>
         <button id="evt-save-btn" class="btn-primary">Save Event Settings</button>
         <p id="evt-result" class="result-text"></p>

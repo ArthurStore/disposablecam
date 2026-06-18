@@ -64,18 +64,13 @@
           console.error('Session recovery storage clear failed:', e);
         }
       });
-    } catch (e) {
-      console.error('Session recovery localStorage access failed:', e);
-    }
 
-      // Force socket reconnection with fresh handshake
       if (socket.connected) {
         socket.disconnect();
         await new Promise(r => setTimeout(r, 200));
       }
       socket.connect();
 
-      // Wait for connection then refetch history
       await new Promise((resolve) => {
         const timeout = setTimeout(() => resolve(), 2000);
         socket.once('connect', () => {

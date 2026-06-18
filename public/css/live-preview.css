@@ -136,6 +136,17 @@ body {
   width: 100%;
   height: 100%;
 }
+.spotlight.landscape {
+  aspect-ratio: 16 / 9;
+  max-width: min(100%, calc((100vh - 100px) * 16 / 9));
+  max-height: calc(100vh - 100px);
+}
+
+.spotlight.landscape .spotlight-media img,
+.spotlight.landscape .spotlight-media video {
+  object-fit: contain;
+}
+
 .spotlight-media img,
 .spotlight-media video {
   width: 100%;
@@ -199,6 +210,7 @@ body {
   .masonry-dashboard { grid-template-columns: 1fr; grid-template-rows: 120px 1fr 120px; }
   .masonry-col { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
   .masonry-tile { width: 90px; flex-shrink: 0; aspect-ratio: 3 / 4 !important; }
+  .masonry-tile.landscape { aspect-ratio: 4 / 3 !important; width: 120px; }
 }
 
 /* Landscape orientation adjustments */

@@ -31,7 +31,24 @@
   const spotlightName = document.getElementById('spotlight-name');
   const spotlightNumber = document.getElementById('spotlight-number');
   const spotlightBar = document.getElementById('spotlight-bar');
+  const spotlightEl = document.querySelector('.spotlight');
   const microToast = document.getElementById('micro-toast');
+
+  function isLandscapeMedia(el) {
+    if (!el) return false;
+    const w = el.naturalWidth || el.videoWidth || 0;
+    const h = el.naturalHeight || el.videoHeight || 0;
+    return w > 0 && h > 0 && w > h;
+  }
+
+  function applySpotlightLayout(mediaEl) {
+    if (!spotlightEl) return;
+    const landscape = isLandscapeMedia(mediaEl);
+    spotlightEl.classList.toggle('landscape', landscape);
+    if (mediaEl) {
+      mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+    }
+  }
 
   function startClock() {
     function tick() {
@@ -98,6 +115,7 @@
       const w = this.naturalWidth || this.videoWidth;
       const h = this.naturalHeight || this.videoHeight;
       if (w && h && w > h) {
+        el.classList.remove('tall', 'short');
         el.classList.add('landscape');
       }
     };
@@ -138,6 +156,7 @@
       vid.playsInline = true;
       vid.loop = false;
       vid.onended = () => advanceSlide();
+      vid.onloadedmetadata = () => applySpotlightLayout(vid);
       spotlightMedia.appendChild(vid);
       slideTimer = setTimeout(advanceSlide, VIDEO_MAX_DURATION);
       spotlightBar.style.transition = 'none';
@@ -145,6 +164,7 @@
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + current.filename);
+      img.onload = () => applySpotlightLayout(img);
       spotlightMedia.appendChild(img);
       spotlightBar.style.transition = 'none';
       spotlightBar.style.width = '0%';

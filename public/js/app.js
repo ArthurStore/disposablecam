@@ -36,7 +36,7 @@
   let gridEnabled = false;
   let timerSeconds = 0;
   let continuousMode = false;
-  let tlInterval = 2;
+  let tlInterval = 15;
   let timerActive = false;
   let timerCountdownId = null;
 
@@ -47,11 +47,12 @@
   // Moments counter
   let momentsCaptured = 0;
 
-  // Timelapse
+  // Timelapse — record video then server speed-up
   let tlIntervalId = null;
-  let tlFrames = [];
   let tlCapturing = false;
-  let tlFrameCount = 0;
+  let tlMediaRecorder = null;
+  let tlRecordedChunks = [];
+  let tlRecStart = 0;
 
   // Snap caption bar drag state (single review)
   let snapBarDragging = false;
@@ -64,16 +65,10 @@
   let draftSnapStartY = 0;
   let draftSnapStartTop = 0;
 
-  // Focus / exposure
-  let focusActive = false;
+  // Focus lock (no exposure slider)
+  let focusLocked = false;
   let focusBoxX = 0;
   let focusBoxY = 0;
-  let exposureLevel = 0.5;
-  let exposureDragging = false;
-  let exposureStartY = 0;
-  let exposureStartLevel = 0.5;
-  let aeAfLocked = false;
-  let focusLongPressTimer = null;
   let isCapturing = false;
 
   // ─── DOM refs ───
@@ -153,8 +148,6 @@
   const orientationDontShow = document.getElementById('orientation-dont-show');
   const focusOverlay = document.getElementById('focus-overlay');
   const focusBox = document.getElementById('focus-box');
-  const exposureSlider = document.getElementById('exposure-slider');
-  const exposureThumb = document.getElementById('exposure-thumb');
 
   // ─── Audio ───
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -267,179 +260,100 @@
     orientationUnderstandBtn.addEventListener('click', hideOrientationModal);
   }
 
-  // ─── Orientation layout hook (landscape uses CSS only) ───
+  // ─── Orientation layout hook ───
   function updateOrientationStyles() {
-    const isLandscape = window.innerWidth > window.innerHeight;
-    document.body.classList.toggle('landscape-ui', isLandscape);
+    document.body.classList.toggle('landscape-ui', window.innerWidth > window.innerHeight);
   }
   window.addEventListener('resize', updateOrientationStyles);
   window.addEventListener('orientationchange', updateOrientationStyles);
 
-  // ─── Touch-to-Focus, Long-Press AE/AF Lock & Exposure ───
+  // ─── Touch-to-Focus Lock (tap to lock, tap elsewhere or box to release) ───
   function setupFocusOverlay() {
-    if (!focusOverlay) return;
-    let focusTimer = null;
-    let tapStartX = 0;
-    let tapStartY = 0;
-    let longPressFired = false;
+    if (!focusOverlay || !focusBox) return;
 
-    function showFocusAt(x, y, locked) {
+    function releaseFocus() {
+      focusLocked = false;
+      focusBox.classList.remove('locked');
+      focusBox.classList.add('hidden');
+      releaseFocusConstraints();
+    }
+
+    function lockFocusAt(clientX, clientY) {
+      const rect = viewfinder.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
       focusBoxX = x;
       focusBoxY = y;
-      focusActive = true;
-      aeAfLocked = locked;
-      if (focusBox) {
-        focusBox.style.left = x + 'px';
-        focusBox.style.top = y + 'px';
-        focusBox.classList.remove('hidden');
-      }
-      if (exposureSlider) exposureSlider.classList.toggle('hidden', !locked);
-      vibrate(locked ? 40 : 20);
-      lockExposureAtPoint(x / viewfinder.getBoundingClientRect().width, y / viewfinder.getBoundingClientRect().height);
+      focusLocked = true;
+      focusBox.style.left = x + 'px';
+      focusBox.style.top = y + 'px';
+      focusBox.classList.remove('hidden');
+      focusBox.classList.add('locked');
+      vibrate(30);
+      applyFocusAtPoint(x / rect.width, y / rect.height);
     }
 
-    function hideFocus() {
-      if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = null;
-      if (!aeAfLocked) {
-        if (focusBox) focusBox.classList.add('hidden');
-        if (exposureSlider) exposureSlider.classList.add('hidden');
-        focusActive = false;
-        unlockExposure();
-      }
-    }
-
-    function onPointerDown(e) {
-      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom')) return;
-      if (aeAfLocked) {
-        aeAfLocked = false;
-        unlockExposure();
-        if (focusBox) focusBox.classList.add('hidden');
-        if (exposureSlider) exposureSlider.classList.add('hidden');
-        focusActive = false;
-      }
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const rect = viewfinder.getBoundingClientRect();
-      tapStartX = clientX - rect.left;
-      tapStartY = clientY - rect.top;
-      longPressFired = false;
-
-      if (focusLongPressTimer) clearTimeout(focusLongPressTimer);
-      focusLongPressTimer = setTimeout(() => {
-        longPressFired = true;
-        showFocusAt(tapStartX, tapStartY, true);
-        if (focusTimer) clearTimeout(focusTimer);
-      }, 1000);
-    }
-
-    function onPointerUp(e) {
-      if (focusLongPressTimer) {
-        clearTimeout(focusLongPressTimer);
-        focusLongPressTimer = null;
-      }
-      if (longPressFired) return;
-      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom')) return;
-
-      const rect = viewfinder.getBoundingClientRect();
-      showFocusAt(tapStartX, tapStartY, false);
-      if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = setTimeout(hideFocus, 1500);
-    }
-
-    focusOverlay.addEventListener('mousedown', onPointerDown);
-    focusOverlay.addEventListener('touchstart', onPointerDown, { passive: true });
-    focusOverlay.addEventListener('mouseup', onPointerUp);
-    focusOverlay.addEventListener('touchend', onPointerUp);
+    focusBox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      releaseFocus();
+    });
 
     focusOverlay.addEventListener('click', (e) => {
+      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom')) return;
       e.preventDefault();
-      e.stopPropagation();
+      if (focusLocked) {
+        releaseFocus();
+        return;
+      }
+      lockFocusAt(e.clientX, e.clientY);
     });
 
-    // Exposure drag
-    if (exposureThumb) {
-      exposureThumb.addEventListener('mousedown', (e) => {
-        if (!aeAfLocked) return;
-        e.preventDefault();
-        exposureDragging = true;
-        exposureStartY = e.clientY;
-        exposureStartLevel = exposureLevel;
-      });
-      exposureThumb.addEventListener('touchstart', (e) => {
-        if (!aeAfLocked || e.touches.length !== 1) return;
-        e.preventDefault();
-        exposureDragging = true;
-        exposureStartY = e.touches[0].clientY;
-        exposureStartLevel = exposureLevel;
-      }, { passive: false });
-    }
-
-    document.addEventListener('mousemove', (e) => {
-      if (!exposureDragging) return;
-      const deltaY = exposureStartY - e.clientY;
-      const range = 140;
-      const delta = deltaY / range;
-      exposureLevel = Math.max(0, Math.min(1, exposureStartLevel + delta));
-      if (exposureThumb) exposureThumb.style.bottom = (exposureLevel * 100) + '%';
-      applyExposureLevel(exposureLevel);
-    });
-    document.addEventListener('touchmove', (e) => {
-      if (!exposureDragging || e.touches.length !== 1) return;
-      const deltaY = exposureStartY - e.touches[0].clientY;
-      const range = 140;
-      const delta = deltaY / range;
-      exposureLevel = Math.max(0, Math.min(1, exposureStartLevel + delta));
-      if (exposureThumb) exposureThumb.style.bottom = (exposureLevel * 100) + '%';
-      applyExposureLevel(exposureLevel);
+    focusOverlay.addEventListener('touchend', (e) => {
+      if (e.target.closest('.vf-top') || e.target.closest('.vf-bottom')) return;
+      if (!e.changedTouches || !e.changedTouches.length) return;
+      const t = e.changedTouches[0];
+      if (e.target === focusBox || focusBox.contains(e.target)) return;
+      e.preventDefault();
+      if (focusLocked) {
+        releaseFocus();
+        return;
+      }
+      lockFocusAt(t.clientX, t.clientY);
     }, { passive: false });
-    document.addEventListener('mouseup', () => { exposureDragging = false; });
-    document.addEventListener('touchend', () => { exposureDragging = false; });
   }
 
-  async function lockExposureAtPoint(xNorm, yNorm) {
+  async function applyFocusAtPoint(xNorm, yNorm) {
     if (!mediaStream) return;
     const track = mediaStream.getVideoTracks()[0];
     if (!track || !track.getCapabilities) return;
     const caps = track.getCapabilities();
-    if (!caps.exposureMode) return;
+    const advanced = [];
+    if (caps.pointsOfInterest) {
+      advanced.push({ pointsOfInterest: [{ x: Math.min(1, Math.max(0, xNorm)), y: Math.min(1, Math.max(0, yNorm)) }] });
+    }
+    if (caps.focusMode && caps.focusMode.includes('single-shot')) {
+      advanced.push({ focusMode: 'single-shot' });
+    }
+    if (!advanced.length) return;
     try {
-      await track.applyConstraints({
-        advanced: [{ exposureMode: 'manual' }]
-      });
+      await track.applyConstraints({ advanced });
     } catch (e) {}
   }
 
-  async function unlockExposure() {
+  async function releaseFocusConstraints() {
     if (!mediaStream) return;
     const track = mediaStream.getVideoTracks()[0];
     if (!track || !track.getCapabilities) return;
     const caps = track.getCapabilities();
-    if (!caps.exposureMode) return;
-    try {
-      await track.applyConstraints({
-        advanced: [{ exposureMode: 'continuous' }]
-      });
-    } catch (e) {}
-    exposureLevel = 0.5;
-    if (exposureThumb) exposureThumb.style.bottom = '50%';
-  }
-
-  async function applyExposureLevel(level) {
-    if (!mediaStream) return;
-    const track = mediaStream.getVideoTracks()[0];
-    if (!track || !track.getCapabilities) return;
-    const caps = track.getCapabilities();
-    if (caps.exposureCompensation) {
-      const min = caps.exposureCompensation.min || -3;
-      const max = caps.exposureCompensation.max || 3;
-      const val = min + (max - min) * level;
+    if (caps.focusMode && caps.focusMode.includes('continuous')) {
       try {
-        await track.applyConstraints({
-          advanced: [{ exposureCompensation: val }]
-        });
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
       } catch (e) {}
     }
+  }
+
+  function isLandscapeView() {
+    return window.innerWidth > window.innerHeight;
   }
 
   // ─── Event Config ───
@@ -486,10 +400,11 @@
       mediaStream = null;
     }
     if (video) video.srcObject = null;
-    aeAfLocked = false;
-    focusActive = false;
-    if (focusBox) focusBox.classList.add('hidden');
-    if (exposureSlider) exposureSlider.classList.add('hidden');
+    focusLocked = false;
+    if (focusBox) {
+      focusBox.classList.add('hidden');
+      focusBox.classList.remove('locked');
+    }
   }
 
   function applyCaptionOverlay(parent, caption, yPercent) {
@@ -1032,6 +947,7 @@
   async function takePhoto() {
     if (isCapturing) return;
     isCapturing = true;
+    const landscape = isLandscapeView();
 
     try {
       if (!video.videoWidth || !video.videoHeight) {
@@ -1039,23 +955,25 @@
           if (video.videoWidth) return resolve();
           const onReady = () => { video.removeEventListener('loadeddata', onReady); resolve(); };
           video.addEventListener('loadeddata', onReady);
-          setTimeout(resolve, 150);
+          setTimeout(resolve, landscape ? 50 : 120);
         });
       }
+
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
 
       vibrate(50);
       playShutterSound();
 
-      const w = video.videoWidth || 1280;
-      const h = video.videoHeight || 720;
+      await new Promise((r) => requestAnimationFrame(r));
+
       canvas.width = w;
       canvas.height = h;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: false, desynchronized: landscape });
       if (video.classList.contains('mirrored')) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
       ctx.drawImage(video, 0, 0, w, h);
 
-      const flashPromise = (flashMode === 'on' || flashMode === 'auto') ? applyFlash() : Promise.resolve();
-      flashPromise.catch(() => {});
+      if (flashMode === 'on' || flashMode === 'auto') applyFlash().catch(() => {});
 
       canvas.toBlob((blob) => {
         isCapturing = false;
@@ -1077,7 +995,7 @@
             applyFlash();
           }, 300);
         }
-      }, 'image/jpeg', 0.92);
+      }, 'image/jpeg', landscape ? 0.86 : 0.92);
     } catch (err) {
       isCapturing = false;
       console.error('Photo capture error:', err);
@@ -1125,167 +1043,83 @@
     vibrate(100);
   }
 
-  // ─── Timelapse ───
+  // ─── Timelapse (record video → server speed-up up to 100x) ───
+  function getTimelapseSpeed() {
+    return Math.min(100, Math.max(1, tlInterval));
+  }
+
   function startTimelapse() {
-    if (!mediaStream) return;
+    if (!mediaStream || tlCapturing) return;
     tlCapturing = true;
-    tlFrames = [];
-    tlFrameCount = 0;
+    tlRecordedChunks = [];
+    tlRecStart = Date.now();
     captureBtn.classList.add('recording');
     tlIndicator.classList.remove('hidden');
-    tlFrameCountEl.textContent = '0';
+    if (tlFrameCountEl) tlFrameCountEl.textContent = 'REC';
     vibrate([50, 50, 50]);
-    showMicroToast(`Timelapse started — ${tlInterval}s intervals`);
-    captureTlFrame();
-    tlIntervalId = setInterval(captureTlFrame, tlInterval * 1000);
+    showMicroToast(`Timelapse recording — ${getTimelapseSpeed()}x on finish`);
+
+    const options = { mimeType: 'video/webm;codecs=vp8,opus' };
+    try { tlMediaRecorder = new MediaRecorder(mediaStream, options); }
+    catch (e) {
+      try { tlMediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'video/webm' }); }
+      catch (e2) { tlMediaRecorder = new MediaRecorder(mediaStream); }
+    }
+    tlMediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) tlRecordedChunks.push(e.data);
+    };
+    tlMediaRecorder.onstop = () => { processTimelapseRecording(); };
+    tlMediaRecorder.start(250);
   }
 
-  function captureTlFrame() {
-    if (!video.videoWidth) return;
-    const c = document.createElement('canvas');
-    c.width = video.videoWidth;
-    c.height = video.videoHeight;
-    const ctx = c.getContext('2d');
-    if (video.classList.contains('mirrored')) { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(video, 0, 0);
-    c.toBlob((blob) => {
-      if (!blob) return;
-      tlFrames.push(blob);
-      tlFrameCount++;
-      if (tlFrameCountEl) tlFrameCountEl.textContent = tlFrameCount;
-      vibrate(10);
-    }, 'image/jpeg', 0.88);
-  }
+  async function processTimelapseRecording() {
+    const blob = new Blob(tlRecordedChunks, { type: tlMediaRecorder?.mimeType || 'video/webm' });
+    tlRecordedChunks = [];
+    tlMediaRecorder = null;
 
-  async function renderTimelapseOnServer(frameBlobs, fps) {
-    const formData = new FormData();
-    frameBlobs.forEach((blob, i) => {
-      formData.append('frames', blob, `frame_${String(i).padStart(5, '0')}.jpg`);
-    });
-    formData.append('fps', String(fps || 12));
+    if (!blob || blob.size < 1000) {
+      showMicroToast('Timelapse too short — record longer');
+      return;
+    }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000);
+    const speed = getTimelapseSpeed();
+    showMicroToast(`Speeding up ${speed}x…`);
+
     try {
-      const res = await fetch(api('timelapse-render'), {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-      });
+      const formData = new FormData();
+      formData.append('video', blob, 'timelapse-source.webm');
+      formData.append('speed', String(speed));
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000);
+      const res = await fetch(api('timelapse-speedup'), { method: 'POST', body: formData, signal: controller.signal });
       clearTimeout(timeoutId);
       if (!res.ok) {
-        let msg = 'Server render failed';
-        try {
-          const data = await res.json();
-          msg = data.error || data.detail || msg;
-        } catch (e) {}
+        let msg = 'Timelapse speed-up failed';
+        try { const d = await res.json(); msg = d.error || d.detail || msg; } catch (e) {}
         throw new Error(msg);
       }
-      const blob = await res.blob();
-      if (!blob || blob.size < 500) throw new Error('Empty timelapse output');
-      return blob;
+      const outBlob = await res.blob();
+      if (!outBlob || outBlob.size < 500) throw new Error('Empty timelapse output');
+      const ext = (outBlob.type || '').includes('mp4') ? 'mp4' : 'webm';
+      showReviewScreen(outBlob, 'timelapse.' + ext, outBlob.type || 'video/webm', true);
     } catch (e) {
-      clearTimeout(timeoutId);
-      throw e;
+      console.error('[TIMELAPSE ERROR]: ', e);
+      showMicroToast('Timelapse failed: ' + (e.message || 'try again'));
     }
   }
 
-  async function loadFrameSource(blob) {
-    if (typeof createImageBitmap !== 'undefined') {
-      return createImageBitmap(blob);
-    }
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const objUrl = URL.createObjectURL(blob);
-      img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
-      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Frame decode failed')); };
-      img.src = objUrl;
-    });
-  }
-
-  async function renderTimelapseClient(frameBlobs, fps) {
-    const images = await Promise.all(frameBlobs.map(loadFrameSource));
-    const w = images[0].width || 640;
-    const h = images[0].height || 480;
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = w;
-    outCanvas.height = h;
-    const ctx = outCanvas.getContext('2d');
-
-    let stream;
-    try { stream = outCanvas.captureStream(fps); }
-    catch (e) { throw new Error('Canvas captureStream not supported'); }
-
-    const mimeTypes = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
-    let rec = null;
-    for (const mime of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(mime)) {
-        try { rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4000000 }); break; }
-        catch (e) {}
-      }
-    }
-    if (!rec) {
-      try { rec = new MediaRecorder(stream); } catch (e) { throw e; }
-    }
-
-    return new Promise((resolve, reject) => {
-      const chunks = [];
-      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-      rec.onstop = () => {
-        if (chunks.length) resolve(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
-        else reject(new Error('No video data recorded'));
-      };
-      rec.onerror = (e) => reject(e || new Error('MediaRecorder error'));
-
-      const frameMs = Math.max(1000 / fps, 33);
-      let i = 0;
-      rec.start(250);
-
-      function drawFrame() {
-        if (i >= images.length) {
-          try { rec.requestData(); } catch (e) {}
-          setTimeout(() => { try { if (rec.state !== 'inactive') rec.stop(); } catch (e) {} }, 500);
-          return;
-        }
-        ctx.drawImage(images[i], 0, 0, w, h);
-        i++;
-        setTimeout(drawFrame, frameMs);
-      }
-
-      ctx.drawImage(images[0], 0, 0, w, h);
-      setTimeout(drawFrame, frameMs);
-    });
-  }
-
-  async function stopTimelapse() {
-    clearInterval(tlIntervalId);
-    tlIntervalId = null;
+  function stopTimelapse() {
     tlCapturing = false;
     captureBtn.classList.remove('recording');
     tlIndicator.classList.add('hidden');
     vibrate(100);
-
-    if (tlFrames.length < 2) { showMicroToast('Not enough frames for timelapse'); return; }
-    showMicroToast(`Rendering ${tlFrames.length} frames…`);
-
-    try {
-      const frames = tlFrames.slice();
-      tlFrames = [];
-      let blob = null;
-      try {
-        blob = await renderTimelapseOnServer(frames, 12);
-      } catch (serverErr) {
-        console.error('[TIMELAPSE ERROR]: server render —', serverErr);
-        showMicroToast('Server render unavailable, encoding on device…');
-        blob = await renderTimelapseClient(frames, 12);
+    if (tlMediaRecorder && tlMediaRecorder.state !== 'inactive') {
+      try { tlMediaRecorder.stop(); } catch (e) {
+        console.error('[TIMELAPSE ERROR]: stop recorder —', e);
+        processTimelapseRecording();
       }
-      if (!blob || blob.size < 500) throw new Error('Timelapse output empty');
-      const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
-      showReviewScreen(blob, 'timelapse.' + ext, blob.type || 'video/webm', true);
-    } catch (e) {
-      console.error('[TIMELAPSE ERROR]: ', e);
-      showMicroToast('Timelapse render failed: ' + (e.message || 'unknown error'));
-      tlFrames = [];
+    } else {
+      showMicroToast('No timelapse recording to process');
     }
   }
 

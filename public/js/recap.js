@@ -74,8 +74,9 @@
       if (data.event) {
         heroTitle.textContent = data.event.eventName || 'The Moments';
         heroSubtitle.textContent = data.event.eventSubtitle || '';
-        if (data.event.coverImage) {
-          heroBg.style.backgroundImage = `url('${url('uploads/' + data.event.coverImage)}')`;
+        const recapCover = data.event.recapCoverImage || data.event.coverImage;
+        if (recapCover) {
+          heroBg.style.backgroundImage = `url('${url('uploads/' + recapCover)}')`;
         }
         document.title = (data.event.eventName || 'Recap') + ' — Moments';
       }

@@ -452,10 +452,18 @@ th {
 .cover-upload input[type="file"] { margin-top: 8px; font-size: 0.85rem; color: var(--text-dim); }
 .cover-preview {
   margin-top: 10px;
-  height: 120px;
   border-radius: 10px;
   background: var(--bg) center/cover no-repeat;
   border: 1px solid var(--border);
+}
+.cover-preview-portrait {
+  height: 160px;
+  max-width: 120px;
+}
+.cover-preview-widescreen {
+  height: 120px;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
 }
 
 /* ─── Danger panel ─── */

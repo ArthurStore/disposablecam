@@ -201,7 +201,76 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
   }
 });
 
-// ─── Timelapse server-side render (ffmpeg) ───
+// ─── Timelapse speed-up (record video → ffmpeg fast-forward) ───
+router.post('/api/timelapse-speedup', handleUpload('video'), async (req, res) => {
+  const sessionId = Date.now() + '-' + Math.round(Math.random() * 1e6);
+  const tmpDir = path.join(os.tmpdir(), 'dc-tlsp-' + sessionId);
+
+  const cleanup = () => {
+    try {
+      if (fs.existsSync(tmpDir)) {
+        fs.readdirSync(tmpDir).forEach((f) => {
+          try { fs.unlinkSync(path.join(tmpDir, f)); } catch (e) {}
+        });
+        fs.rmdirSync(tmpDir);
+      }
+    } catch (e) {}
+  };
+
+  try {
+    if (!req.file) {
+      console.error('[TIMELAPSE ERROR]: no video file received');
+      return res.status(400).json({ error: 'No video file uploaded' });
+    }
+
+    const speed = Math.min(100, Math.max(1, parseInt(req.body.speed, 10) || 10));
+    if (!ffmpeg) {
+      console.error('[TIMELAPSE ERROR]: ffmpeg not available');
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
+      return res.status(503).json({ error: 'Timelapse renderer not installed on server' });
+    }
+
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const inputPath = req.file.path;
+    const outMp4 = path.join(tmpDir, 'timelapse-fast.mp4');
+    const outWebm = path.join(tmpDir, 'timelapse-fast.webm');
+    const ptsFilter = `setpts=PTS/${speed}`;
+
+    const encode = (outPath, opts) => new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .videoFilters(ptsFilter)
+        .outputOptions(opts)
+        .on('end', () => resolve(outPath))
+        .on('error', (err) => reject(err))
+        .save(outPath);
+    });
+
+    let outputPath;
+    try {
+      outputPath = await encode(outMp4, ['-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '23', '-movflags', '+faststart']);
+    } catch (mp4Err) {
+      console.error('[TIMELAPSE ERROR]: mp4 speedup failed —', mp4Err.message);
+      outputPath = await encode(outWebm, ['-an', '-c:v', 'libvpx-vp9', '-b:v', '2M', '-pix_fmt', 'yuv420p']);
+    }
+
+    try { fs.unlinkSync(inputPath); } catch (e) {}
+
+    const mime = outputPath.endsWith('.mp4') ? 'video/mp4' : 'video/webm';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', 'inline; filename="timelapse' + path.extname(outputPath) + '"');
+    res.sendFile(outputPath, (sendErr) => {
+      cleanup();
+      if (sendErr) console.error('[TIMELAPSE ERROR]: send file —', sendErr);
+    });
+  } catch (err) {
+    console.error('[TIMELAPSE ERROR]: ', err);
+    cleanup();
+    try { if (req.file && req.file.path) fs.unlinkSync(req.file.path); } catch (e) {}
+    res.status(500).json({ error: 'Timelapse render failed', detail: err.message });
+  }
+});
+
+// ─── Timelapse legacy frame render (ffmpeg) ───
 router.post('/api/timelapse-render', (req, res) => {
   const sessionId = Date.now() + '-' + Math.round(Math.random() * 1e6);
   const tmpDir = path.join(os.tmpdir(), 'dc-tl-' + sessionId);
@@ -551,8 +620,9 @@ router.get('/api/event-config', async (req, res) => {
     res.json({
       eventName: settings.eventName,
       eventSubtitle: settings.eventSubtitle,
-      coverImage: settings.coverImage,
-      recapSlug: settings.recapSlug
+        coverImage: settings.coverImage,
+        recapCoverImage: settings.recapCoverImage || settings.coverImage,
+        recapSlug: settings.recapSlug
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch event config' });
@@ -606,6 +676,23 @@ router.post('/api/admin/event-cover', handleUpload('cover'), async (req, res) =>
   }
 });
 
+router.post('/api/admin/event-recap-cover', handleUpload('cover'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No recap cover uploaded' });
+    const settings = await getEventSettings();
+    if (settings.recapCoverImage) {
+      const oldPath = path.join(__dirname, 'uploads', settings.recapCoverImage);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+    settings.recapCoverImage = req.file.filename;
+    await settings.save();
+    res.json({ success: true, recapCoverImage: settings.recapCoverImage });
+  } catch (err) {
+    console.error('[RECAP COVER ERROR]: ', err);
+    res.status(500).json({ error: 'Recap cover upload failed' });
+  }
+});
+
 router.get('/api/recap', async (req, res) => {
   try {
     const { participant, slug } = req.query;
@@ -632,6 +719,7 @@ router.get('/api/recap', async (req, res) => {
         eventName: settings.eventName,
         eventSubtitle: settings.eventSubtitle,
         coverImage: settings.coverImage,
+        recapCoverImage: settings.recapCoverImage,
         recapSlug: settings.recapSlug
       }
     });
