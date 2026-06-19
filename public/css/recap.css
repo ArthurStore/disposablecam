@@ -112,10 +112,10 @@ body.recap-page {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-width: 640px;
   width: 100%;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 0 12px;
+  padding: 0 16px;
 }
 
 .recap-body-fixed {
@@ -323,9 +323,18 @@ body.recap-page {
   .recap-grid { gap: 10px; }
 }
 
-@media (min-width: 768px) {
-  .recap-body { max-width: 720px; padding-left: 20px; padding-right: 20px; }
-  .recap-grid { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 640px) {
+  .recap-body { padding-left: 24px; padding-right: 24px; }
+  .recap-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+}
+
+@media (min-width: 1024px) {
+  .recap-body { padding-left: 40px; padding-right: 40px; }
+  .recap-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+}
+
+@media (min-width: 1440px) {
+  .recap-grid { grid-template-columns: repeat(5, 1fr); }
 }
 
 /* Portrait photos still usable inside 16:9 container */
