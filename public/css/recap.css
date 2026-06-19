@@ -631,10 +631,10 @@ body.recap-page {
 
 .modal-content.modal-spotlight {
   position: relative;
-  width: 100%;
-  max-width: min(92vw, 420px);
+  width: min(92vw, 420px);
   aspect-ratio: 9 / 16;
   max-height: 72dvh;
+  height: auto;
   border-radius: 16px;
   overflow: hidden;
   background: #0a0a0a;
@@ -647,6 +647,7 @@ body.recap-page {
 
 .modal-content.modal-spotlight.landscape {
   aspect-ratio: 16 / 9;
+  width: min(92vw, calc(72dvh * 16 / 9));
   max-width: min(92vw, calc(72dvh * 16 / 9));
   max-height: 72dvh;
 }

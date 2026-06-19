@@ -95,9 +95,10 @@
 
   function applyModalLayout(mediaEl) {
     if (MO) {
-      const orient = MO.applyMediaLayout(mediaEl, modalContent);
-      modalContent.classList.toggle('phone-rotated', orient === 'landscape' && isPhonePortrait());
-      if (currentModal && !currentModal._isCover) currentModal._orient = orient;
+      MO.bindMediaOrientation(mediaEl, modalContent, (orient) => {
+        modalContent.classList.toggle('phone-rotated', orient === 'landscape' && isPhonePortrait());
+        if (currentModal && !currentModal._isCover) currentModal._orient = orient;
+      });
       return;
     }
     const landscape = isLandscapeMedia(mediaEl);

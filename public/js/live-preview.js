@@ -37,7 +37,7 @@
   function applySpotlightLayout(mediaEl) {
     if (!spotlightEl) return;
     if (MO) {
-      MO.applyMediaLayout(mediaEl, spotlightEl);
+      MO.bindMediaOrientation(mediaEl, spotlightEl);
       return;
     }
     const landscape = mediaEl && (mediaEl.naturalWidth || mediaEl.videoWidth) > (mediaEl.naturalHeight || mediaEl.videoHeight);

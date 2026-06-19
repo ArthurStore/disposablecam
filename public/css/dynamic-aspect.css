@@ -1,5 +1,14 @@
 /* Unified dynamic aspect — portrait 9:16, landscape 16:9 */
 
+.recap-item img,
+.masonry-tile img,
+.spotlight-media img,
+.modal-content.modal-spotlight img,
+.gallery-item img,
+.review-media img {
+  image-orientation: from-image;
+}
+
 .dynamic-aspect,
 .portrait,
 .preview-portrait,
