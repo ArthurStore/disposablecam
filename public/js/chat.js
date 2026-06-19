@@ -33,6 +33,8 @@
   let participantLoadPending = false;
   let recoveryInProgress = false;
   let incognitoDetected = false;
+  const dmUnread = new Map();
+  const dmConversations = new Map();
 
   // Detect incognito/private browsing mode
   function detectIncognito() {
@@ -105,6 +107,7 @@
   const dmSelectedDisplay = document.getElementById('dm-selected-display');
   const dmSelectedLabel = document.getElementById('dm-selected-label');
   const dmChangeRecipient = document.getElementById('dm-change-recipient');
+  const dmConvoTabs = document.getElementById('dm-convo-tabs');
   const chatAttachBtn = document.getElementById('chat-attach-btn');
   const chatUploadError = document.getElementById('chat-upload-error');
   const chatGalleryPicker = document.getElementById('chat-gallery-picker');
@@ -146,20 +149,33 @@
       if (chatMode === 'public') loadHistory(true);
       else {
         loadParticipants();
-        if (privateRecipient) loadPrivateHistory(true);
+        if (privateRecipient) {
+          showDmRecipientPicked(privateRecipientName, privateRecipient);
+          loadPrivateHistory(true);
+        } else {
+          showDmRecipientPicker();
+        }
       }
       scrollToBottom();
+      if (window.pushAppOverlay) window.pushAppOverlay(closeChatPanel);
+    } else if (window.dismissAppOverlay) {
+      window.dismissAppOverlay(closeChatPanel);
     }
   });
 
   chatCloseBtn.addEventListener('click', () => {
-    closeChatPanel();
+    if (window.dismissAppOverlay) window.dismissAppOverlay(closeChatPanel);
+    else closeChatPanel();
   });
 
   window.closeChatPanel = function () {
     chatVisible = false;
     chatPanel.classList.remove('visible');
     chatPanel.classList.add('hidden');
+  };
+
+  window.isChatOpen = function () {
+    return chatVisible;
   };
 
   chatTabPublic.addEventListener('click', () => switchChatMode('public'));
@@ -170,12 +186,14 @@
     chatTabPublic.classList.toggle('active', mode === 'public');
     chatTabPrivate.classList.toggle('active', mode === 'private');
     privateRecipientBar.classList.toggle('hidden', mode !== 'private');
+    if (dmConvoTabs) dmConvoTabs.classList.toggle('visible', mode === 'private');
     if (mode !== 'private') privateRecipientBar.classList.remove('recipient-picked');
     chatMessages.innerHTML = '';
     hideUploadError();
     if (mode === 'public') {
       loadHistory(true);
     } else {
+      renderDmConvoTabs();
       loadParticipants();
       if (privateRecipient) {
         showDmRecipientPicked(privateRecipientName, privateRecipient);
@@ -184,6 +202,63 @@
         showDmRecipientPicker();
       }
     }
+  }
+
+  function getDmUnread(num) {
+    return dmUnread.get(String(num)) || 0;
+  }
+
+  function setDmUnread(num, count) {
+    const key = String(num);
+    if (count <= 0) dmUnread.delete(key);
+    else dmUnread.set(key, count);
+    renderDmConvoTabs();
+    renderParticipantList(participantsCache);
+  }
+
+  function bumpDmUnread(num) {
+    setDmUnread(num, getDmUnread(num) + 1);
+  }
+
+  function clearDmUnread(num) {
+    setDmUnread(num, 0);
+  }
+
+  function ensureDmConversation(num, name) {
+    const key = String(num);
+    if (!dmConversations.has(key)) {
+      dmConversations.set(key, { num: key, name: name || key, unread: 0 });
+    } else if (name) {
+      dmConversations.get(key).name = name;
+    }
+    return dmConversations.get(key);
+  }
+
+  function renderDmConvoTabs() {
+    if (!dmConvoTabs || !chatUser) return;
+    dmConvoTabs.innerHTML = '';
+    if (!dmConversations.size) return;
+
+    dmConversations.forEach((convo) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'dm-convo-tab' + (privateRecipient === convo.num ? ' active' : '');
+      const unread = getDmUnread(convo.num);
+      const shortName = (convo.name || '').split(' ')[0] || convo.num;
+      tab.textContent = shortName;
+      if (unread > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'dm-unread-badge';
+        badge.textContent = unread > 99 ? '99+' : unread;
+        tab.appendChild(badge);
+      }
+      tab.addEventListener('click', () => {
+        const u = participantsCache.find((p) => p.participantNumber === convo.num);
+        const btnEl = dmParticipantList.querySelector(`[data-num="${convo.num}"]`);
+        selectRecipient(convo.num, u ? u.fullName : convo.name, btnEl);
+      });
+      dmConvoTabs.appendChild(tab);
+    });
   }
 
   function showDmRecipientPicked(name, num) {
@@ -262,7 +337,9 @@
       btn.className = 'dm-participant-item' + (u.participantNumber === prev ? ' selected' : '');
       btn.dataset.num = u.participantNumber;
       btn.dataset.name = u.fullName;
-      btn.textContent = `${u.fullName} (#${u.participantNumber})`;
+      const unread = getDmUnread(u.participantNumber);
+      btn.innerHTML = `<span>${escapeHtml(u.fullName)} (#${escapeHtml(u.participantNumber)})</span>` +
+        (unread > 0 ? `<span class="dm-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '');
       btn.addEventListener('click', () => selectRecipient(u.participantNumber, u.fullName, btn));
       dmParticipantList.appendChild(btn);
     });
@@ -286,13 +363,16 @@
     privateRecipient = num;
     privateRecipientName = name;
     privateRecipientInput.value = num;
+    ensureDmConversation(num, name);
 
     dmParticipantList.querySelectorAll('.dm-participant-item').forEach((el) => {
       el.classList.toggle('selected', el === btnEl);
     });
     if (dmSelect && dmSelect.value !== num) dmSelect.value = num;
 
+    clearDmUnread(num);
     showDmRecipientPicked(name, num);
+    renderDmConvoTabs();
     loadPrivateHistory(true);
   }
 
@@ -328,7 +408,10 @@
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
 
   chatAttachBtn.addEventListener('click', () => openGalleryPicker());
-  chatPickerClose.addEventListener('click', () => chatGalleryPicker.classList.add('hidden'));
+  chatPickerClose.addEventListener('click', () => {
+    if (window.dismissAppOverlay) window.dismissAppOverlay(() => chatGalleryPicker.classList.add('hidden'));
+    else chatGalleryPicker.classList.add('hidden');
+  });
 
   async function openGalleryPicker() {
     if (!chatUser) return;
@@ -337,6 +420,7 @@
       return;
     }
     chatGalleryPicker.classList.remove('hidden');
+    if (window.pushAppOverlay) window.pushAppOverlay(() => chatGalleryPicker.classList.add('hidden'));
     chatPickerGrid.innerHTML = '';
     try {
       const photos = typeof fetchUserGallery === 'function'
@@ -442,14 +526,21 @@
       msg.toParticipantNumber === chatUser.participantNumber;
     if (!involved) return;
 
-    if (chatMode === 'private' && chatVisible) {
-      const isThisConvo = privateRecipient && (
-        (msg.fromParticipantNumber === chatUser.participantNumber && msg.toParticipantNumber === privateRecipient) ||
-        (msg.toParticipantNumber === chatUser.participantNumber && msg.fromParticipantNumber === privateRecipient)
-      );
-      if (isThisConvo) appendPrivateMessage(msg);
+    const fromSelf = msg.fromParticipantNumber === chatUser.participantNumber;
+    const otherNum = fromSelf ? msg.toParticipantNumber : msg.fromParticipantNumber;
+    const otherName = fromSelf ? msg.toFullName : msg.fromFullName;
+    ensureDmConversation(otherNum, otherName);
+
+    const isActiveConvo = chatMode === 'private' && chatVisible && privateRecipient === otherNum;
+
+    if (isActiveConvo) {
+      appendPrivateMessage(msg);
+    } else if (!fromSelf) {
+      bumpDmUnread(otherNum);
     }
+
     if (!chatVisible) bumpUnread();
+    else if (!fromSelf && !(chatMode === 'private' && privateRecipient === otherNum)) bumpUnread();
   });
 
   function bumpUnread() {

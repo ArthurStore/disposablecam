@@ -202,6 +202,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
+      <div id="dm-convo-tabs" class="dm-convo-tabs"></div>
       <div id="private-recipient-bar" class="private-recipient-bar hidden">
         <select id="dm-select" class="dm-select-dropdown">
           <option value="">— Select recipient —</option>
@@ -273,6 +274,10 @@
       </div>
       <!-- Tap hint -->
       <div id="snap-tap-hint" class="snap-tap-hint">Tap photo to add caption</div>
+      <div id="tl-processing-overlay" class="tl-processing-overlay hidden">
+        <div class="tl-processing-spinner"></div>
+        <p>Processing...</p>
+      </div>
     </div>
     <div class="review-controls" id="review-controls">
       <div id="timelapse-speed-panel" class="timelapse-speed-panel hidden">
@@ -281,7 +286,6 @@
           <span id="tl-speed-value">15x</span>
         </div>
         <input type="range" id="tl-speed-slider" min="1" max="100" value="15" step="1">
-        <button type="button" id="tl-speed-preview-btn">Preview Speed</button>
       </div>
       <input type="text" id="review-caption-input" placeholder="Add a caption…" maxlength="100">
       <div class="review-actions">

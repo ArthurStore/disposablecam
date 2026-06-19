@@ -26,6 +26,7 @@
   let recTimerId = null;
   let flashMode = 'off';
   let zoomLevel = 1;
+  let nativeZoomActive = false;
   let currentZoomPreset = 1;
   let lastTapTime = 0;
   let pinchStartDist = 0;
@@ -115,8 +116,17 @@
   const timelapseSpeedPanel = document.getElementById('timelapse-speed-panel');
   const tlSpeedSlider = document.getElementById('tl-speed-slider');
   const tlSpeedValue = document.getElementById('tl-speed-value');
-  const tlSpeedPreviewBtn = document.getElementById('tl-speed-preview-btn');
+  const tlProcessingOverlay = document.getElementById('tl-processing-overlay');
   let reviewObjUrl = null;
+  let tlProcessedBlob = null;
+  let tlProcessedObjUrl = null;
+  let tlProcessTimer = null;
+  let tlProcessAbort = null;
+  let tlProcessGen = 0;
+
+  // In-app back navigation
+  const overlayStack = [];
+  let ignoreNextPop = false;
   const microToast = document.getElementById('micro-toast');
   const timerCountdownEl = document.getElementById('timer-countdown');
   const gridOverlay = document.getElementById('grid-overlay');
@@ -266,10 +276,51 @@
   }
 
   // ─── Orientation layout hook ───
+  function initHistoryNav() {
+    if (window.__dcHistoryNav) return;
+    window.__dcHistoryNav = true;
+    history.replaceState({ dcRoot: true }, '');
+    history.pushState({ dcGuard: true }, '');
+    window.addEventListener('popstate', () => {
+      if (ignoreNextPop) {
+        ignoreNextPop = false;
+        return;
+      }
+      if (overlayStack.length) {
+        const { onClose } = overlayStack.pop();
+        onClose();
+      } else {
+        history.pushState({ dcGuard: true }, '');
+      }
+    });
+  }
+
+  function pushOverlay(onClose) {
+    overlayStack.push({ onClose });
+    history.pushState({ dcOverlay: true }, '');
+  }
+
+  function dismissOverlay(onClose) {
+    if (!overlayStack.length) {
+      onClose();
+      return;
+    }
+    ignoreNextPop = true;
+    overlayStack.pop();
+    onClose();
+    history.back();
+  }
+
+  window.dismissAppOverlay = dismissOverlay;
+  window.pushAppOverlay = pushOverlay;
+
   function updateOrientationStyles() {
     const landscape = window.innerWidth > window.innerHeight;
     document.body.classList.toggle('landscape-ui', landscape);
-    if (landscape && window.closeChatPanel) window.closeChatPanel();
+    if (landscape && window.isChatOpen && window.isChatOpen()) {
+      if (window.dismissAppOverlay) window.dismissAppOverlay(window.closeChatPanel);
+      else if (window.closeChatPanel) window.closeChatPanel();
+    }
   }
   window.addEventListener('resize', updateOrientationStyles);
   window.addEventListener('orientationchange', updateOrientationStyles);
@@ -532,6 +583,7 @@
     listenForRevocation();
     refreshGalleryThumb();
     updateOrientationStyles();
+    initHistoryNav();
     if (typeof initChat === 'function') initChat(currentUser);
   }
 
@@ -567,16 +619,21 @@
   });
 
   // ─── Settings Panel ───
+  function closeSettings() {
+    settingsPanel.classList.remove('visible');
+    setTimeout(() => settingsPanel.classList.add('hidden'), 350);
+    settingsBtn.classList.remove('active');
+  }
+
   settingsBtn.addEventListener('click', () => {
     vibrate(20);
     settingsPanel.classList.remove('hidden');
     settingsPanel.classList.add('visible');
     settingsBtn.classList.add('active');
+    pushOverlay(closeSettings);
   });
   settingsClose.addEventListener('click', () => {
-    settingsPanel.classList.remove('visible');
-    setTimeout(() => settingsPanel.classList.add('hidden'), 350);
-    settingsBtn.classList.remove('active');
+    dismissOverlay(closeSettings);
   });
 
   function setGridEnabled(on) {
@@ -660,12 +717,12 @@
   async function setZoomPreset(preset) {
     if (preset === 0.5) {
       await tryUltraWideCamera();
+      updateZoomPill();
     } else {
       if (currentZoomPreset === 0.5) {
-        // Switch back from ultrawide to main camera
         await initCamera(false);
       }
-      setZoom(preset);
+      await setZoom(preset);
     }
   }
 
@@ -673,54 +730,78 @@
   async function tryUltraWideCamera() {
     try {
       releaseMediaStream();
+      nativeZoomActive = false;
 
-      // Try native ultra-wide via facingMode + zoom constraint
-      const constraints = {
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          zoom: { ideal: 0.5 }
-        },
-        audio: currentMode === 'video'
-      };
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        mediaStream = stream;
-        video.srcObject = stream;
-        // Apply native zoom if supported
-        const track = stream.getVideoTracks()[0];
-        const caps = track.getCapabilities ? track.getCapabilities() : {};
-        if (caps.zoom && caps.zoom.min <= 0.6) {
-          try { await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }); } catch (e) {}
-        }
-        applyMirror();
-        applyFlash();
-        zoomLevel = 1; // Reset CSS zoom — native handles it
-        zoomLayer.style.transform = 'scale(1)';
-        return;
-      } catch (e) {}
-
-      // Fallback: enumerate devices and pick widest angle
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      if (videoDevices.length > 1 && currentFacingMode === 'environment') {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: videoDevices[videoDevices.length - 1].deviceId }, width: { ideal: 1920 } },
+      const attempts = [
+        {
+          video: {
+            facingMode: { exact: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            zoom: { ideal: 0.5, min: 0.5, max: 1 }
+          },
           audio: currentMode === 'video'
-        });
-        mediaStream = stream;
-        video.srcObject = stream;
-        applyMirror();
-        zoomLevel = 1;
-        zoomLayer.style.transform = 'scale(1)';
-        return;
+        },
+        {
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            zoom: { ideal: 0.5 }
+          },
+          audio: currentMode === 'video'
+        },
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ zoom: 0.5 }]
+          },
+          audio: currentMode === 'video'
+        }
+      ];
+
+      for (const constraints of attempts) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          mediaStream = stream;
+          video.srcObject = stream;
+          const track = stream.getVideoTracks()[0];
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (caps.zoom && caps.zoom.min <= 0.6) {
+            try { await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }); nativeZoomActive = true; } catch (e) {}
+          }
+          applyMirror();
+          applyFlash();
+          zoomLevel = 0.5;
+          zoomLayer.style.transform = 'scale(1)';
+          return;
+        } catch (e) {}
       }
 
-      // CSS fallback — zoom out slightly but clamp so no black borders
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+      if (videoDevices.length > 1 && currentFacingMode === 'environment') {
+        for (let i = videoDevices.length - 1; i >= 0; i--) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: videoDevices[i].deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+              audio: currentMode === 'video'
+            });
+            mediaStream = stream;
+            video.srcObject = stream;
+            applyMirror();
+            applyFlash();
+            zoomLevel = 0.5;
+            zoomLayer.style.transform = 'scale(1)';
+            return;
+          } catch (e) {}
+        }
+      }
+
       await initCamera(false);
-      setZoom(0.9); // closest we can get without black borders
+      setZoom(1);
       showMicroToast('Ultra-wide not available on this device');
     } catch (err) {
       await initCamera(false);
@@ -749,6 +830,7 @@
       // Reset CSS zoom when reinitializing — prevents stale scale
       zoomLayer.style.transform = 'scale(1)';
       zoomLevel = 1;
+      nativeZoomActive = false;
     } catch (err) {
       console.error('Camera error:', err);
     }
@@ -788,27 +870,55 @@
     initCamera(false);
   });
 
-  // ─── Zoom — clamped to prevent black borders ───
-  function setZoom(level) {
-    // Minimum 1.0 prevents CSS scaling below 100% which causes black borders
-    // Maximum 6x for digital zoom
-    zoomLevel = Math.min(Math.max(level, 1.0), 6);
-    zoomLayer.style.transform = `scale(${zoomLevel})`;
-    const zoomPill = document.getElementById('zoom-indicator');
-    if (zoomPill) {
-      if (zoomLevel !== 1) {
-        zoomPill.textContent = zoomLevel.toFixed(1) + '×';
-        zoomPill.classList.remove('hidden');
-      } else {
-        zoomPill.classList.add('hidden');
-      }
+  async function applyNativeZoom(level) {
+    if (!mediaStream || currentZoomPreset === 0.5) return false;
+    const track = mediaStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return false;
+    const caps = track.getCapabilities();
+    if (!caps.zoom) return false;
+    const z = Math.min(Math.max(level, caps.zoom.min || 1), Math.min(caps.zoom.max || 10, 10));
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: z }] });
+      zoomLevel = z;
+      nativeZoomActive = true;
+      zoomLayer.style.transform = 'scale(1)';
+      return true;
+    } catch (e) {
+      return false;
     }
+  }
+
+  function updateZoomPill() {
+    const zoomPill = document.getElementById('zoom-indicator');
+    if (!zoomPill) return;
+    const displayLevel = currentZoomPreset === 0.5 ? 0.5 : zoomLevel;
+    if (Math.abs(displayLevel - 1) > 0.05) {
+      zoomPill.textContent = displayLevel.toFixed(1) + '×';
+      zoomPill.classList.remove('hidden');
+    } else {
+      zoomPill.classList.add('hidden');
+    }
+  }
+
+  async function setZoom(level) {
+    if (currentZoomPreset === 0.5 && level >= 1) {
+      currentZoomPreset = 1;
+      document.querySelectorAll('.zoom-preset-btn').forEach((b) => {
+        b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1);
+      });
+      await initCamera(false);
+    }
+    zoomLevel = Math.min(Math.max(level, 1.0), 10);
+    const nativeOk = await applyNativeZoom(zoomLevel);
+    if (!nativeOk) {
+      nativeZoomActive = false;
+      zoomLayer.style.transform = `scale(${zoomLevel})`;
+    }
+    updateZoomPill();
   }
 
   function resetZoom() {
     setZoom(1);
-    const zoomPill = document.getElementById('zoom-indicator');
-    if (zoomPill) zoomPill.classList.add('hidden');
   }
 
   const zoomPillBtn = document.getElementById('zoom-indicator');
@@ -942,6 +1052,34 @@
     }
   }
 
+  function getCssZoomScale() {
+    const m = (zoomLayer.style.transform || '').match(/scale\(([\d.]+)\)/);
+    return m ? parseFloat(m[1]) : zoomLevel;
+  }
+
+  function drawVideoFrame(ctx, videoEl) {
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    const track = mediaStream?.getVideoTracks()[0];
+    const settings = track?.getSettings?.() || {};
+    const nativeZ = settings.zoom || 1;
+    const cssScale = getCssZoomScale();
+
+    if (nativeZoomActive && nativeZ > 1.01) {
+      ctx.drawImage(videoEl, 0, 0, vw, vh);
+      return;
+    }
+    if (cssScale <= 1.01) {
+      ctx.drawImage(videoEl, 0, 0, vw, vh);
+      return;
+    }
+    const cropW = vw / cssScale;
+    const cropH = vh / cssScale;
+    const sx = (vw - cropW) / 2;
+    const sy = (vh - cropH) / 2;
+    ctx.drawImage(videoEl, sx, sy, cropW, cropH, 0, 0, vw, vh);
+  }
+
   // ─── Take Photo ───
   async function takePhoto() {
     if (isCapturing) return;
@@ -970,7 +1108,7 @@
       canvas.height = h;
       const ctx = canvas.getContext('2d', { alpha: false, desynchronized: landscape });
       if (video.classList.contains('mirrored')) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-      ctx.drawImage(video, 0, 0, w, h);
+      drawVideoFrame(ctx, video);
 
       if (flashMode === 'on' || flashMode === 'auto') applyFlash().catch(() => {});
 
@@ -1079,7 +1217,17 @@
     showTimelapseReviewScreen(blob);
   }
 
+  function clearTimelapseProcessed() {
+    if (tlProcessedObjUrl) URL.revokeObjectURL(tlProcessedObjUrl);
+    tlProcessedBlob = null;
+    tlProcessedObjUrl = null;
+  }
+
   function showTimelapseReviewScreen(blob) {
+    clearTimelapseProcessed();
+    if (tlProcessAbort) tlProcessAbort.abort();
+    tlProcessGen++;
+
     pendingCapture = {
       blob,
       filename: 'timelapse-source.webm',
@@ -1096,6 +1244,7 @@
     if (reviewControls) reviewControls.classList.add('timelapse-mode');
     if (tlSpeedSlider) tlSpeedSlider.value = '15';
     if (tlSpeedValue) tlSpeedValue.textContent = '15x';
+    if (tlProcessingOverlay) tlProcessingOverlay.classList.add('hidden');
 
     reviewMedia.innerHTML = '';
     if (reviewObjUrl) URL.revokeObjectURL(reviewObjUrl);
@@ -1113,9 +1262,73 @@
 
     reviewScreen.classList.remove('hidden');
     appEl.classList.add('hidden');
+    pushOverlay(() => closeReviewScreen());
+  }
+
+  async function processTimelapseSpeed(speed) {
+    if (!pendingCapture || !pendingCapture.isTimelapse) return;
+    const gen = ++tlProcessGen;
+    if (tlProcessAbort) tlProcessAbort.abort();
+    tlProcessAbort = new AbortController();
+
+    if (tlProcessingOverlay) tlProcessingOverlay.classList.remove('hidden');
+    const vid = reviewMedia.querySelector('video');
+    if (vid) vid.style.visibility = 'hidden';
+
+    try {
+      const formData = new FormData();
+      formData.append('video', pendingCapture.blob, 'timelapse-source.webm');
+      formData.append('speed', String(speed));
+      const res = await fetch(api('timelapse-speedup'), {
+        method: 'POST',
+        body: formData,
+        signal: tlProcessAbort.signal
+      });
+      if (gen !== tlProcessGen) return;
+      if (!res.ok) {
+        let msg = 'Timelapse speed-up failed';
+        try { const d = await res.json(); msg = d.error || d.detail || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      const outBlob = await res.blob();
+      if (!outBlob || outBlob.size < 500) throw new Error('Empty timelapse output');
+
+      clearTimelapseProcessed();
+      tlProcessedBlob = outBlob;
+      tlProcessedObjUrl = URL.createObjectURL(outBlob);
+      pendingCapture.timelapseSpeed = speed;
+      pendingCapture.processedBlob = outBlob;
+
+      reviewMedia.innerHTML = '';
+      const pv = document.createElement('video');
+      pv.src = tlProcessedObjUrl;
+      pv.controls = true;
+      pv.playsInline = true;
+      pv.autoplay = true;
+      pv.muted = true;
+      pv.loop = true;
+      reviewMedia.appendChild(pv);
+      pv.addEventListener('loadedmetadata', () => {
+        reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(pv));
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      console.error('[TIMELAPSE ERROR]: ', e);
+      showMicroToast('Processing failed: ' + (e.message || 'try again'));
+      const vid2 = reviewMedia.querySelector('video');
+      if (vid2) vid2.style.visibility = '';
+    } finally {
+      if (gen === tlProcessGen && tlProcessingOverlay) tlProcessingOverlay.classList.add('hidden');
+    }
   }
 
   async function uploadTimelapseWithSpeed(sourceBlob, speed) {
+    const blob = tlProcessedBlob || sourceBlob;
+    if (tlProcessedBlob && pendingCapture?.timelapseSpeed === speed) {
+      const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
+      await uploadMedia(blob, 'timelapse.' + ext, blob.type || 'video/mp4', '', 'bottom', 50);
+      return;
+    }
     showMicroToast(`Processing ${speed}x…`);
     const formData = new FormData();
     formData.append('video', sourceBlob, 'timelapse-source.webm');
@@ -1172,7 +1385,7 @@
   draftBadge.addEventListener('click', openDraftPanel);
   draftBadge.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openDraftPanel(); });
 
-  draftPanelClose.addEventListener('click', () => draftReviewPanel.classList.add('hidden'));
+  draftPanelClose.addEventListener('click', () => dismissOverlay(closeDraftPanel));
 
   draftDiscardAll.addEventListener('click', () => {
     if (!confirm('Discard all drafts?')) return;
@@ -1268,12 +1481,17 @@
     }
   }
 
+  function closeDraftPanel() {
+    draftReviewPanel.classList.add('hidden');
+  }
+
   function openDraftPanel() {
     if (!draftQueue.length) return;
     draftViewIndex = Math.min(draftViewIndex, draftQueue.length - 1);
     draftPanelCount.textContent = `${draftQueue.length} photo${draftQueue.length !== 1 ? 's' : ''}`;
     renderDraftViewer();
     draftReviewPanel.classList.remove('hidden');
+    pushOverlay(closeDraftPanel);
   }
 
   function renderDraftViewer() {
@@ -1329,12 +1547,17 @@
   });
 
   function closeReviewScreen() {
+    if (tlProcessTimer) clearTimeout(tlProcessTimer);
+    if (tlProcessAbort) tlProcessAbort.abort();
+    tlProcessGen++;
     pendingCapture = null;
     reviewMedia.innerHTML = '';
     snapCaptionBar.style.display = 'none';
     if (reviewObjUrl) { URL.revokeObjectURL(reviewObjUrl); reviewObjUrl = null; }
+    clearTimelapseProcessed();
     if (timelapseSpeedPanel) timelapseSpeedPanel.classList.add('hidden');
     if (reviewControls) reviewControls.classList.remove('timelapse-mode');
+    if (tlProcessingOverlay) tlProcessingOverlay.classList.add('hidden');
     reviewScreen.classList.add('hidden');
     appEl.classList.remove('hidden');
   }
@@ -1374,6 +1597,7 @@
 
     reviewScreen.classList.remove('hidden');
     appEl.classList.add('hidden');
+    pushOverlay(() => closeReviewScreen());
   }
 
   // ─── Snap Caption Bar (full-width, vertical drag only) ───
@@ -1445,23 +1669,16 @@
     tlSpeedSlider.addEventListener('input', () => {
       const speed = parseInt(tlSpeedSlider.value, 10) || 1;
       if (tlSpeedValue) tlSpeedValue.textContent = speed + 'x';
-      if (pendingCapture && pendingCapture.isTimelapse) pendingCapture.timelapseSpeed = speed;
-    });
-  }
-
-  if (tlSpeedPreviewBtn) {
-    tlSpeedPreviewBtn.addEventListener('click', () => {
-      const vid = reviewMedia.querySelector('video');
-      if (!vid) return;
-      const speed = parseInt(tlSpeedSlider?.value, 10) || 15;
-      vid.playbackRate = Math.min(speed, 16);
-      vid.currentTime = 0;
-      vid.play().catch(() => {});
+      if (pendingCapture && pendingCapture.isTimelapse) {
+        pendingCapture.timelapseSpeed = speed;
+        if (tlProcessTimer) clearTimeout(tlProcessTimer);
+        tlProcessTimer = setTimeout(() => processTimelapseSpeed(speed), 350);
+      }
     });
   }
 
   reviewDiscardBtn.addEventListener('click', () => {
-    closeReviewScreen();
+    dismissOverlay(() => closeReviewScreen());
   });
 
   reviewUploadBtn.addEventListener('click', async () => {
@@ -1472,7 +1689,7 @@
       reviewUploadBtn.disabled = true;
       try {
         await uploadTimelapseWithSpeed(pendingCapture.blob, speed);
-        closeReviewScreen();
+        dismissOverlay(() => closeReviewScreen());
       } catch (e) {
         console.error('[TIMELAPSE ERROR]: ', e);
         showMicroToast('Timelapse failed: ' + (e.message || 'try again'));
@@ -1486,7 +1703,7 @@
     const caption = reviewCaptionInput.value.trim();
     const capY = snapBarY;
     uploadMedia(blob, filename, mimetype, caption, capY < 50 ? 'top' : 'bottom', capY);
-    closeReviewScreen();
+    dismissOverlay(() => closeReviewScreen());
   });
 
   // ─── Upload ───
@@ -1535,9 +1752,25 @@
   const TRASH_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
   const DOWNLOAD_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
-  galleryBtn.addEventListener('click', () => { vibrate(20); loadGallery(); galleryModal.classList.remove('hidden'); });
-  galleryModalClose.addEventListener('click', () => galleryModal.classList.add('hidden'));
-  galleryModal.addEventListener('click', (e) => { if (e.target === galleryModal) galleryModal.classList.add('hidden'); });
+  function closeGalleryModal() {
+    galleryModal.classList.add('hidden');
+  }
+
+  function closeMediaModal() {
+    mediaModal.classList.add('hidden');
+    mediaModalBody.innerHTML = '';
+  }
+
+  galleryBtn.addEventListener('click', () => {
+    vibrate(20);
+    loadGallery();
+    galleryModal.classList.remove('hidden');
+    pushOverlay(closeGalleryModal);
+  });
+  galleryModalClose.addEventListener('click', () => dismissOverlay(closeGalleryModal));
+  galleryModal.addEventListener('click', (e) => {
+    if (e.target === galleryModal) dismissOverlay(closeGalleryModal);
+  });
 
   async function loadGallery() {
     if (!currentUser) return;
@@ -1643,11 +1876,12 @@
     actions.querySelector('.media-download-btn').addEventListener('click', () => downloadMedia(p));
     mediaModalBody.appendChild(actions);
     mediaModal.classList.remove('hidden');
+    pushOverlay(closeMediaModal);
   }
 
-  mediaModalClose.addEventListener('click', () => { mediaModal.classList.add('hidden'); mediaModalBody.innerHTML = ''; });
+  mediaModalClose.addEventListener('click', () => dismissOverlay(closeMediaModal));
   mediaModal.addEventListener('click', (e) => {
-    if (e.target === mediaModal) { mediaModal.classList.add('hidden'); mediaModalBody.innerHTML = ''; }
+    if (e.target === mediaModal) dismissOverlay(closeMediaModal);
   });
 
   function escapeHtml(str) {

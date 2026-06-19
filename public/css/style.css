@@ -698,9 +698,11 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 
 /* Modes bar */
 .vf-modes-bar {
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
+  width: 100%;
 }
 
 .mode-pill {
@@ -732,9 +734,11 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 
 /* Zoom presets row */
 .vf-zoom-row {
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  width: 100%;
 }
 
 .zoom-preset-btn {
@@ -1011,22 +1015,37 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 #tl-speed-value { color: #4f8cff; }
 #tl-speed-slider {
   width: 100%;
-  margin-bottom: 10px;
   accent-color: #4f8cff;
 }
-#tl-speed-preview-btn {
-  width: 100%;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(79, 140, 255, 0.4);
-  background: rgba(79, 140, 255, 0.15);
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
+.review-controls.timelapse-mode #review-caption-input { display: none; }
+
+.tl-processing-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
 }
-.review-controls.timelapse-mode #review-caption-input,
-.review-controls.timelapse-mode .snap-tap-hint { display: none; }
+.tl-processing-overlay.hidden { display: none !important; }
+.tl-processing-spinner {
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+.tl-processing-overlay p {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.75);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 #review-caption-input {
   width: 100%;
@@ -1320,6 +1339,11 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   overflow-y: auto;
 }
 .dm-participant-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
   border: 0.5px solid transparent;
@@ -1371,6 +1395,66 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.dm-convo-tabs {
+  display: none;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 8px 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.dm-convo-tabs.visible { display: flex; }
+.dm-convo-tabs::-webkit-scrollbar { display: none; }
+
+.dm-convo-tab {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dm-convo-tab.active {
+  background: rgba(255, 181, 71, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dm-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.dm-participant-item .dm-unread-badge { margin-left: auto; }
+.dm-convo-tab .dm-unread-badge {
+  position: absolute;
+  top: -5px;
+  right: -4px;
+  margin-left: 0;
+  min-width: 16px;
+  height: 16px;
+  font-size: 0.58rem;
 }
 
 .chat-messages {
@@ -1960,12 +2044,116 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 }
 
 /* ══════════════════════════════════════
-   LANDSCAPE — identical to portrait; chat hidden only
+   LANDSCAPE — wireframe layout; portrait text freeze; chat hidden
    ══════════════════════════════════════ */
 @media (orientation: landscape) and (max-height: 600px) {
   body.landscape-ui .chat-fab,
   body.landscape-ui #chat-panel,
   body.landscape-ui #chat-gallery-picker {
     display: none !important;
+  }
+
+  body.landscape-ui .vf-top {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: auto;
+    min-width: 68px;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    padding: calc(10px + var(--safe-top)) 8px calc(10px + var(--safe-bottom));
+    border-bottom: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  body.landscape-ui .vf-top-profile {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    flex: 0;
+    gap: 6px;
+  }
+
+  body.landscape-ui .profile-text h1 {
+    font-size: 0.68rem;
+    white-space: normal;
+    max-width: 56px;
+    line-height: 1.2;
+  }
+
+  body.landscape-ui .vf-top-controls {
+    flex-direction: column;
+    margin-left: 0;
+    margin-top: auto;
+    gap: 8px;
+  }
+
+  body.landscape-ui .vf-bottom {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    left: auto;
+    bottom: auto;
+    transform: translateY(-50%);
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px calc(12px + var(--safe-right, 0px)) 10px 10px;
+    background: transparent;
+  }
+
+  body.landscape-ui .vf-modes-bar {
+    flex-direction: column;
+    width: auto;
+    order: 1;
+  }
+
+  body.landscape-ui .vf-zoom-row {
+    flex-direction: column;
+    width: auto;
+    order: 2;
+  }
+
+  body.landscape-ui .vf-controls-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    order: 3;
+    padding: 0;
+  }
+
+  body.landscape-ui .gallery-cluster,
+  body.landscape-ui .capture-btn,
+  body.landscape-ui .vf-side-btn {
+    justify-self: unset;
+    grid-column: unset;
+  }
+
+  body.landscape-ui .vf-side-btn { order: 1; }
+  body.landscape-ui .capture-btn { order: 2; }
+  body.landscape-ui .gallery-cluster { order: 3; }
+
+  /* Portrait text freeze — no rotation on labels */
+  body.landscape-ui .mode-pill,
+  body.landscape-ui .zoom-preset-btn,
+  body.landscape-ui .profile-text h1,
+  body.landscape-ui .profile-text span,
+  body.landscape-ui .vf-side-btn span,
+  body.landscape-ui .zoom-pill {
+    transform: none;
+    writing-mode: horizontal-tb;
+  }
+
+  body.landscape-ui #recording-indicator,
+  body.landscape-ui .timelapse-indicator {
+    top: calc(12px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
