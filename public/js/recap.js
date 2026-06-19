@@ -19,6 +19,7 @@
 
   const heroThumbBtn = document.getElementById('hero-thumb-btn');
   const heroThumb = document.getElementById('hero-thumb');
+  const recapAmbient = document.getElementById('recap-ambient');
   const heroTitle = document.getElementById('hero-title');
   const heroSubtitle = document.getElementById('hero-subtitle');
   const statMoments = document.getElementById('stat-moments');
@@ -87,9 +88,15 @@
         heroTitle.textContent = data.event.eventName || 'The Moments';
         heroSubtitle.textContent = data.event.eventSubtitle || '';
         const recapCover = data.event.recapCoverImage || data.event.coverImage;
-        if (recapCover && heroThumb && heroThumbBtn) {
-          heroThumb.src = url('uploads/' + recapCover);
-          heroThumbBtn.classList.remove('hidden');
+        if (recapCover) {
+          const coverUrl = url('uploads/' + recapCover);
+          if (heroThumb && heroThumbBtn) {
+            heroThumb.src = coverUrl;
+            heroThumbBtn.classList.remove('hidden');
+          }
+          if (recapAmbient) {
+            recapAmbient.style.backgroundImage = `url('${coverUrl}')`;
+          }
         }
         document.title = (data.event.eventName || 'Recap') + ' — Moments';
       }
@@ -161,12 +168,6 @@
       } else {
         mediaEl.loading = 'lazy';
       }
-
-      mediaEl.onload = mediaEl.onloadedmetadata = function () {
-        const w = this.naturalWidth || this.videoWidth;
-        const h = this.naturalHeight || this.videoHeight;
-        if (w && h && w > h) item.classList.add('landscape');
-      };
 
       item.appendChild(mediaEl);
       if (p.fileType === 'video') {
