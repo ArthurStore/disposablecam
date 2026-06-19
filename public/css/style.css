@@ -207,6 +207,23 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   border-color: rgba(255, 215, 0, 0.55);
   animation: none;
 }
+.focus-lock-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  color: rgba(255, 215, 0, 0.95);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+  transition: opacity 0.25s ease;
+}
+.focus-box.locked .focus-lock-icon {
+  opacity: 1;
+}
 @keyframes focusPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -1270,6 +1287,22 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   border: 2px solid #000;
 }
 
+.chat-private-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+.chat-private-badge.hidden { display: none !important; }
+
 .chat-panel {
   position: fixed;
   inset: 0;
@@ -2209,9 +2242,9 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 
   body.landscape-ui .mode-pill,
   body.landscape-ui .zoom-preset-btn {
-    writing-mode: vertical-rl;
+    writing-mode: vertical-lr;
     text-orientation: mixed;
-    transform: none;
+    transform: rotate(180deg);
     width: 26px;
     min-width: 26px;
     max-width: 26px;
@@ -2225,8 +2258,9 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   }
 
   body.landscape-ui .zoom-pill {
-    writing-mode: vertical-rl;
+    writing-mode: vertical-lr;
     text-orientation: mixed;
+    transform: rotate(180deg);
     width: 26px;
     max-width: 26px;
     padding: 8px 4px;

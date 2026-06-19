@@ -38,6 +38,19 @@
   const dmOpenTabs = new Set();
   const dmTabOrder = [];
 
+  function normPn(n) {
+    if (n == null) return '';
+    return String(n).trim();
+  }
+  function isSameParticipant(a, b) {
+    return normPn(a) === normPn(b);
+  }
+  function getTotalDmUnread() {
+    let t = 0;
+    dmUnread.forEach((c) => { t += c; });
+    return t;
+  }
+
   // Detect incognito/private browsing mode
   function detectIncognito() {
     return new Promise((resolve) => {
@@ -94,6 +107,7 @@
 
   const chatToggleBtn = document.getElementById('chat-toggle-btn');
   const chatBadge = document.getElementById('chat-badge');
+  const chatPrivateBadge = document.getElementById('chat-private-badge');
   const chatPanel = document.getElementById('chat-panel');
   const chatCloseBtn = document.getElementById('chat-close-btn');
   const chatMessages = document.getElementById('chat-messages');
@@ -188,7 +202,6 @@
     chatTabPublic.classList.toggle('active', mode === 'public');
     chatTabPrivate.classList.toggle('active', mode === 'private');
     privateRecipientBar.classList.toggle('hidden', mode !== 'private');
-    if (dmConvoTabs) dmConvoTabs.classList.toggle('visible', mode === 'private');
     if (mode !== 'private') privateRecipientBar.classList.remove('recipient-picked');
     chatMessages.innerHTML = '';
     hideUploadError();
@@ -204,6 +217,22 @@
         showDmRecipientPicker();
       }
     }
+    updateDmTabsVisibility();
+  }
+
+  function updatePrivateTabBadge() {
+    if (!chatPrivateBadge) return;
+    const total = getTotalDmUnread();
+    if (total > 0) {
+      chatPrivateBadge.textContent = total > 99 ? '99+' : total;
+      chatPrivateBadge.classList.remove('hidden');
+    } else {
+      chatPrivateBadge.classList.add('hidden');
+    }
+  }
+
+  function updateDmTabsVisibility() {
+    if (dmConvoTabs) dmConvoTabs.classList.toggle('visible', dmOpenTabs.size > 0);
   }
 
   function getDmUnread(num) {
@@ -216,6 +245,7 @@
     else dmUnread.set(key, count);
     renderDmConvoTabs();
     renderParticipantList(participantsCache);
+    updatePrivateTabBadge();
   }
 
   function bumpDmUnread(num) {
@@ -234,6 +264,7 @@
       dmTabOrder.push(key);
     }
     renderDmConvoTabs();
+    updateDmTabsVisibility();
   }
 
   function closeDmTab(num, e) {
@@ -245,7 +276,7 @@
     dmOpenTabs.delete(key);
     const idx = dmTabOrder.indexOf(key);
     if (idx >= 0) dmTabOrder.splice(idx, 1);
-    if (privateRecipient === key) {
+    if (isSameParticipant(privateRecipient, key)) {
       privateRecipient = null;
       privateRecipientName = '';
       privateRecipientInput.value = '';
@@ -253,6 +284,7 @@
       showDmRecipientPicker();
     }
     renderDmConvoTabs();
+    updateDmTabsVisibility();
   }
 
   function ensureDmConversation(num, name) {
@@ -275,7 +307,7 @@
       if (!convo) return;
 
       const tab = document.createElement('div');
-      tab.className = 'dm-convo-tab' + (privateRecipient === key ? ' active' : '');
+      tab.className = 'dm-convo-tab' + (isSameParticipant(privateRecipient, key) ? ' active' : '');
       tab.setAttribute('role', 'button');
       tab.tabIndex = 0;
 
@@ -377,7 +409,7 @@
   function renderParticipantList(users) {
     if (!chatUser) return;
     const prev = privateRecipient;
-    const filtered = users.filter((u) => u.participantNumber !== chatUser.participantNumber);
+    const filtered = users.filter((u) => !isSameParticipant(u.participantNumber, chatUser.participantNumber));
 
     // Update list buttons
     dmParticipantList.innerHTML = '';
@@ -410,7 +442,7 @@
   }
 
   function selectRecipient(num, name, btnEl) {
-    privateRecipient = num;
+    privateRecipient = normPn(num);
     privateRecipientName = name;
     privateRecipientInput.value = num;
     openDmTab(num, name);
@@ -573,25 +605,29 @@
 
   socket.on('private-message', (msg) => {
     if (!chatUser) return;
-    const involved = msg.fromParticipantNumber === chatUser.participantNumber ||
-      msg.toParticipantNumber === chatUser.participantNumber;
-    if (!involved) return;
+    const myNum = normPn(chatUser.participantNumber);
+    const fromNum = normPn(msg.fromParticipantNumber);
+    const toNum = normPn(msg.toParticipantNumber);
+    if (fromNum !== myNum && toNum !== myNum) return;
 
-    const fromSelf = msg.fromParticipantNumber === chatUser.participantNumber;
-    const otherNum = fromSelf ? msg.toParticipantNumber : msg.fromParticipantNumber;
+    const fromSelf = fromNum === myNum;
+    const otherNum = fromSelf ? toNum : fromNum;
     const otherName = fromSelf ? msg.toFullName : msg.fromFullName;
+
     openDmTab(otherNum, otherName);
+    updateDmTabsVisibility();
 
-    const isActiveConvo = chatMode === 'private' && chatVisible && privateRecipient === otherNum;
+    const viewingConvo = chatVisible && chatMode === 'private' && isSameParticipant(privateRecipient, otherNum);
 
-    if (isActiveConvo) {
+    if (viewingConvo) {
       appendPrivateMessage(msg);
     } else if (!fromSelf) {
       bumpDmUnread(otherNum);
+      bumpUnread();
+      if (typeof window.showMicroToast === 'function') {
+        window.showMicroToast('DM dari ' + (otherName || otherNum).split(' ')[0]);
+      }
     }
-
-    if (!chatVisible) bumpUnread();
-    else if (!fromSelf && !(chatMode === 'private' && privateRecipient === otherNum)) bumpUnread();
   });
 
   function bumpUnread() {
@@ -606,7 +642,7 @@
   }
 
   function appendPrivateMessage(msg) {
-    const isSelf = chatUser && msg.fromParticipantNumber === chatUser.participantNumber;
+    const isSelf = chatUser && isSameParticipant(msg.fromParticipantNumber, chatUser.participantNumber);
     const sender = isSelf ? 'You' : msg.fromFullName;
     const label = isSelf ? `→ ${msg.toFullName}` : `#${msg.fromParticipantNumber}`;
     appendMessageEl(msg, isSelf, sender, label);
