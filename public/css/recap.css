@@ -348,43 +348,51 @@ body.recap-page {
   font-size: 0.85rem;
 }
 
-/* ─── Tablet / iPad: satu layar, 4 kolom, hero compact ─── */
+/* ─── Tablet / iPad: satu layar, hero 16:9 nyata, 4 kolom ─── */
 @media (min-width: 768px) {
   .recap-hero {
     flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    width: 100%;
   }
 
-  /* 16:9 crop — tinggi dibatasi supaya tidak tutupi konten */
+  /* 16:9 asli — max ~setengah layar; lebar menyesuaikan supaya tidak pipih */
   .hero-banner {
-    width: 100%;
-    height: clamp(130px, 17dvh, 175px);
-    aspect-ratio: auto;
+    aspect-ratio: 16 / 9;
+    width: min(100%, calc(50dvh * 16 / 9));
+    height: auto;
+    max-height: 50dvh;
+    margin: 0 auto;
   }
 
   .hero-overlay {
-    padding: 10px 22px 12px;
+    padding: 16px 28px 20px;
   }
 
   .hero-overlay h1 {
-    font-size: clamp(1.05rem, 2vw, 1.55rem);
-    margin-bottom: 2px;
+    font-size: clamp(1.65rem, 3.8vw, 2.75rem);
+    margin-bottom: 4px;
+    line-height: 1.08;
   }
 
   .hero-overlay p {
-    font-size: 0.72rem;
-    margin-bottom: 6px;
+    font-size: clamp(0.88rem, 1.6vw, 1.15rem);
+    margin-bottom: 10px;
+    font-weight: 600;
   }
 
   .stat-num {
-    font-size: clamp(0.9rem, 1.6vw, 1.2rem);
+    font-size: clamp(1.2rem, 2.4vw, 1.85rem);
   }
 
   .stat-label {
-    font-size: 0.62rem;
+    font-size: clamp(0.72rem, 1.1vw, 0.88rem);
+    font-weight: 700;
   }
 
   .stats-row {
-    gap: 8px 14px;
+    gap: 10px 20px;
   }
 
   .recap-body {
@@ -395,22 +403,22 @@ body.recap-page {
 
   .recap-body-fixed {
     flex-shrink: 0;
-    padding: 8px 12px;
-    margin-bottom: 4px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
   }
 
   .pill {
-    padding: 7px 10px;
-    font-size: 0.76rem;
+    padding: 9px 14px;
+    font-size: 0.82rem;
   }
 
   .people-picker {
-    margin-top: 6px;
+    margin-top: 8px;
   }
 
   .people-picker select {
-    padding: 8px 10px;
-    font-size: 0.8rem;
+    padding: 9px 12px;
+    font-size: 0.85rem;
   }
 
   .recap-scroll-area {
@@ -424,8 +432,8 @@ body.recap-page {
 
   .grid-hint {
     flex-shrink: 0;
-    margin-bottom: 6px;
-    font-size: 0.62rem;
+    margin-bottom: 8px;
+    font-size: 0.68rem;
   }
 
   /* Satu deret foto — 4 kolom, scroll horizontal jika lebih */
@@ -441,7 +449,7 @@ body.recap-page {
     overflow-y: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    align-items: stretch;
+    align-items: center;
   }
 
   .recap-grid::-webkit-scrollbar {
@@ -458,23 +466,49 @@ body.recap-page {
   }
 
   .hero-banner-blur {
-    height: 72%;
+    height: 62%;
   }
 }
 
-/* ─── Desktop: satu layar, 6 kolom ─── */
+/* ─── Desktop: hero lebih besar, 6 kolom ─── */
 @media (min-width: 1100px) {
   .hero-banner {
-    height: clamp(145px, 16dvh, 190px);
+    width: min(100%, calc(52dvh * 16 / 9));
+    max-height: 52dvh;
   }
 
   .hero-overlay {
-    padding: 12px 36px 14px;
-    max-width: none;
+    padding: 20px 40px 24px;
+  }
+
+  .hero-overlay h1 {
+    font-size: clamp(2rem, 3.2vw, 3.25rem);
+  }
+
+  .hero-overlay p {
+    font-size: clamp(1rem, 1.4vw, 1.25rem);
+    margin-bottom: 12px;
+  }
+
+  .stat-num {
+    font-size: clamp(1.45rem, 2.2vw, 2.1rem);
+  }
+
+  .stat-label {
+    font-size: clamp(0.78rem, 1vw, 0.95rem);
+  }
+
+  .stats-row {
+    gap: 12px 28px;
   }
 
   .recap-body {
     padding: 0 28px 12px;
+  }
+
+  .pill {
+    padding: 10px 16px;
+    font-size: 0.88rem;
   }
 
   .recap-grid {
