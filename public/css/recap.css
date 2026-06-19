@@ -7,7 +7,15 @@ body {
   color: #f5f5f5;
   font-family: 'Poppins', system-ui, sans-serif;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
+}
+
+body.recap-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
 }
 
 .hidden { display: none !important; }
@@ -17,9 +25,11 @@ body {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
+  max-height: min(24vh, 168px);
   display: flex;
   align-items: flex-end;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .hero-bg {
@@ -44,35 +54,33 @@ body {
   position: relative;
   z-index: 2;
   width: 100%;
-  padding: 0 20px 32px;
+  padding: 0 14px 10px;
 }
 
 .hero-content h1 {
   font-family: 'Montserrat', 'Poppins', sans-serif;
-  font-size: clamp(2rem, 9vw, 3rem);
+  font-size: clamp(1.15rem, 4.5vw, 1.75rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   text-shadow: 0 2px 16px rgba(0,0,0,0.5);
 }
 
 .hero-content p {
-  font-size: 0.95rem;
+  font-size: 0.72rem;
   color: rgba(255,255,255,0.65);
-  margin-bottom: 24px;
+  margin-bottom: 8px;
   font-weight: 500;
 }
 
 .stats-row {
   display: flex;
-  gap: 32px;
+  gap: 14px;
 }
 
-.stat { display: flex; flex-direction: column; }
-
 .stat-num {
-  font-size: 2rem;
+  font-size: clamp(1rem, 3.2vw, 1.35rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -93,28 +101,47 @@ body {
 
 /* ─── Body ─── */
 .recap-body {
-  padding: 20px 12px 60px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   max-width: 640px;
+  width: 100%;
   margin: 0 auto;
+  padding: 0 12px;
+}
+
+.recap-body-fixed {
+  flex-shrink: 0;
+  padding-top: 10px;
+}
+
+.recap-scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 60px;
 }
 
 .pill-toggle {
   display: flex;
   background: rgba(255,255,255,0.07);
   border-radius: 999px;
-  padding: 4px;
-  margin-bottom: 16px;
+  padding: 3px;
+  margin-bottom: 8px;
   border: 1px solid rgba(255,255,255,0.06);
 }
 
 .pill {
   flex: 1;
-  padding: 11px 16px;
+  padding: 9px 12px;
   border: none;
   border-radius: 999px;
   background: transparent;
   color: rgba(255,255,255,0.5);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
@@ -126,7 +153,7 @@ body {
   color: #000;
 }
 
-.people-picker { margin-bottom: 14px; }
+.people-picker { margin-bottom: 8px; }
 
 .people-picker select {
   width: 100%;

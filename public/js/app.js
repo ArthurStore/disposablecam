@@ -115,6 +115,7 @@
   const reviewControls = document.getElementById('review-controls');
   const timelapseSpeedPanel = document.getElementById('timelapse-speed-panel');
   const tlSpeedSlider = document.getElementById('tl-speed-slider');
+  const tlSpeedInput = document.getElementById('tl-speed-input');
   const tlSpeedValue = document.getElementById('tl-speed-value');
   const tlProcessingOverlay = document.getElementById('tl-processing-overlay');
   let reviewObjUrl = null;
@@ -727,10 +728,37 @@
   }
 
   // ─── Camera ───
+  let ultrawideDeviceId = null;
+
+  async function probeCameraDevices() {
+    try {
+      const tmp = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      tmp.getTracks().forEach((t) => t.stop());
+    } catch (e) {}
+    return navigator.mediaDevices.enumerateDevices();
+  }
+
+  function rankUltraWideDevices(devices) {
+    const vids = devices.filter((d) => d.kind === 'videoinput');
+    const ultraRe = /ultra|wide|0\.5|uw|ultra-wide|super-wide/i;
+    const backRe = /back|rear|environment|wide/i;
+    const scored = vids.map((d) => {
+      const label = (d.label || '').toLowerCase();
+      let score = 0;
+      if (ultraRe.test(label)) score += 100;
+      if (backRe.test(label)) score += 10;
+      if (/tele|front|user|selfie|depth|infrared|ir/i.test(label)) score -= 50;
+      return { device: d, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s) => s.device);
+  }
+
   async function tryUltraWideCamera() {
     try {
       releaseMediaStream();
       nativeZoomActive = false;
+      currentFacingMode = 'environment';
 
       const attempts = [
         {
@@ -770,39 +798,59 @@
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities ? track.getCapabilities() : {};
           if (caps.zoom && caps.zoom.min <= 0.6) {
-            try { await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }); nativeZoomActive = true; } catch (e) {}
+            try {
+              await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+              nativeZoomActive = true;
+            } catch (e) {}
           }
+          ultrawideDeviceId = track.getSettings()?.deviceId || null;
           applyMirror();
           applyFlash();
           zoomLevel = 0.5;
           zoomLayer.style.transform = 'scale(1)';
+          currentZoomPreset = 0.5;
+          updateZoomPill();
           return;
         } catch (e) {}
       }
 
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-      if (videoDevices.length > 1 && currentFacingMode === 'environment') {
-        for (let i = videoDevices.length - 1; i >= 0; i--) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: videoDevices[i].deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-              audio: currentMode === 'video'
-            });
-            mediaStream = stream;
-            video.srcObject = stream;
-            applyMirror();
-            applyFlash();
-            zoomLevel = 0.5;
-            zoomLayer.style.transform = 'scale(1)';
-            return;
-          } catch (e) {}
-        }
+      const devices = await probeCameraDevices();
+      const ranked = rankUltraWideDevices(devices);
+      for (const dev of ranked) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: dev.deviceId },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
+            audio: currentMode === 'video'
+          });
+          mediaStream = stream;
+          video.srcObject = stream;
+          const track = stream.getVideoTracks()[0];
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (caps.zoom && caps.zoom.min < 1) {
+            try {
+              await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+              nativeZoomActive = true;
+            } catch (e) {}
+          }
+          ultrawideDeviceId = dev.deviceId;
+          applyMirror();
+          applyFlash();
+          zoomLevel = 0.5;
+          zoomLayer.style.transform = 'scale(1)';
+          currentZoomPreset = 0.5;
+          updateZoomPill();
+          return;
+        } catch (e) {}
       }
 
       await initCamera(false);
-      setZoom(1);
-      showMicroToast('Ultra-wide not available on this device');
+      currentZoomPreset = 1;
+      await setZoom(1);
+      showMicroToast('Ultra-wide lens not available — using main camera');
     } catch (err) {
       await initCamera(false);
     }
@@ -1243,6 +1291,7 @@
     if (timelapseSpeedPanel) timelapseSpeedPanel.classList.remove('hidden');
     if (reviewControls) reviewControls.classList.add('timelapse-mode');
     if (tlSpeedSlider) tlSpeedSlider.value = '15';
+    if (tlSpeedInput) tlSpeedInput.value = '15';
     if (tlSpeedValue) tlSpeedValue.textContent = '15x';
     if (tlProcessingOverlay) tlProcessingOverlay.classList.add('hidden');
 
@@ -1665,14 +1714,46 @@
     getContainer: () => snapCaptionBar.parentElement
   });
 
+  function clampTimelapseSpeed(val) {
+    return Math.min(50, Math.max(1, Math.round(val) || 1));
+  }
+
+  function syncTimelapseSpeedUI(speed) {
+    const s = clampTimelapseSpeed(speed);
+    if (tlSpeedSlider) tlSpeedSlider.value = String(s);
+    if (tlSpeedInput) tlSpeedInput.value = String(s);
+    if (tlSpeedValue) tlSpeedValue.textContent = s + 'x';
+    if (pendingCapture && pendingCapture.isTimelapse) pendingCapture.timelapseSpeed = s;
+    return s;
+  }
+
+  function scheduleTimelapseProcess(speed) {
+    const s = syncTimelapseSpeedUI(speed);
+    if (tlProcessTimer) clearTimeout(tlProcessTimer);
+    tlProcessTimer = setTimeout(() => processTimelapseSpeed(s), 350);
+  }
+
   if (tlSpeedSlider) {
     tlSpeedSlider.addEventListener('input', () => {
-      const speed = parseInt(tlSpeedSlider.value, 10) || 1;
-      if (tlSpeedValue) tlSpeedValue.textContent = speed + 'x';
       if (pendingCapture && pendingCapture.isTimelapse) {
-        pendingCapture.timelapseSpeed = speed;
-        if (tlProcessTimer) clearTimeout(tlProcessTimer);
-        tlProcessTimer = setTimeout(() => processTimelapseSpeed(speed), 350);
+        scheduleTimelapseProcess(parseInt(tlSpeedSlider.value, 10));
+      }
+    });
+  }
+
+  if (tlSpeedInput) {
+    tlSpeedInput.addEventListener('input', () => {
+      if (!pendingCapture || !pendingCapture.isTimelapse) return;
+      scheduleTimelapseProcess(parseInt(tlSpeedInput.value, 10));
+    });
+    tlSpeedInput.addEventListener('change', () => {
+      if (!pendingCapture || !pendingCapture.isTimelapse) return;
+      scheduleTimelapseProcess(parseInt(tlSpeedInput.value, 10));
+    });
+    tlSpeedInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && pendingCapture && pendingCapture.isTimelapse) {
+        e.preventDefault();
+        scheduleTimelapseProcess(parseInt(tlSpeedInput.value, 10));
       }
     });
   }

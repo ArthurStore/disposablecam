@@ -18,7 +18,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/recap.css">
 </head>
-<body>
+<body class="recap-page">
   <header class="recap-hero" id="recap-hero">
     <div class="hero-bg" id="hero-bg"></div>
     <div class="hero-content">
@@ -33,18 +33,21 @@
   </header>
 
   <div class="recap-body">
-    <div class="pill-toggle">
-      <button id="tab-all" class="pill active">All Moments</button>
-      <button id="tab-people" class="pill">People Moments</button>
+    <div class="recap-body-fixed">
+      <div class="pill-toggle">
+        <button id="tab-all" class="pill active">All Moments</button>
+        <button id="tab-people" class="pill">People Moments</button>
+      </div>
+      <div id="people-picker" class="people-picker hidden">
+        <select id="people-select"><option value="">Select person…</option></select>
+      </div>
     </div>
 
-    <div id="people-picker" class="people-picker hidden">
-      <select id="people-select"><option value="">Select person…</option></select>
+    <div class="recap-scroll-area">
+      <p class="grid-hint">Tap any photo to preview and download</p>
+      <div id="recap-grid" class="recap-grid"></div>
+      <p id="recap-empty" class="recap-empty hidden">No moments captured yet</p>
     </div>
-
-    <p class="grid-hint">Tap any photo to preview and download</p>
-    <div id="recap-grid" class="recap-grid"></div>
-    <p id="recap-empty" class="recap-empty hidden">No moments captured yet</p>
   </div>
 
   <div id="modal-overlay" class="modal-overlay">

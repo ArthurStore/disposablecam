@@ -223,7 +223,7 @@ router.post('/api/timelapse-speedup', handleUpload('video'), async (req, res) =>
       return res.status(400).json({ error: 'No video file uploaded' });
     }
 
-    const speed = Math.min(100, Math.max(1, parseInt(req.body.speed, 10) || 10));
+    const speed = Math.min(50, Math.max(1, parseInt(req.body.speed, 10) || 10));
     if (!ffmpeg) {
       console.error('[TIMELAPSE ERROR]: ffmpeg not available');
       try { fs.unlinkSync(req.file.path); } catch (e) {}

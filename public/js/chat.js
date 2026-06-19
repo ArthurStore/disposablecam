@@ -35,6 +35,8 @@
   let incognitoDetected = false;
   const dmUnread = new Map();
   const dmConversations = new Map();
+  const dmOpenTabs = new Set();
+  const dmTabOrder = [];
 
   // Detect incognito/private browsing mode
   function detectIncognito() {
@@ -224,6 +226,35 @@
     setDmUnread(num, 0);
   }
 
+  function openDmTab(num, name) {
+    const key = String(num);
+    ensureDmConversation(key, name);
+    if (!dmOpenTabs.has(key)) {
+      dmOpenTabs.add(key);
+      dmTabOrder.push(key);
+    }
+    renderDmConvoTabs();
+  }
+
+  function closeDmTab(num, e) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const key = String(num);
+    dmOpenTabs.delete(key);
+    const idx = dmTabOrder.indexOf(key);
+    if (idx >= 0) dmTabOrder.splice(idx, 1);
+    if (privateRecipient === key) {
+      privateRecipient = null;
+      privateRecipientName = '';
+      privateRecipientInput.value = '';
+      chatMessages.innerHTML = '';
+      showDmRecipientPicker();
+    }
+    renderDmConvoTabs();
+  }
+
   function ensureDmConversation(num, name) {
     const key = String(num);
     if (!dmConversations.has(key)) {
@@ -237,26 +268,45 @@
   function renderDmConvoTabs() {
     if (!dmConvoTabs || !chatUser) return;
     dmConvoTabs.innerHTML = '';
-    if (!dmConversations.size) return;
+    if (!dmOpenTabs.size) return;
 
-    dmConversations.forEach((convo) => {
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.className = 'dm-convo-tab' + (privateRecipient === convo.num ? ' active' : '');
-      const unread = getDmUnread(convo.num);
-      const shortName = (convo.name || '').split(' ')[0] || convo.num;
-      tab.textContent = shortName;
+    dmTabOrder.filter((key) => dmOpenTabs.has(key)).forEach((key) => {
+      const convo = dmConversations.get(key);
+      if (!convo) return;
+
+      const tab = document.createElement('div');
+      tab.className = 'dm-convo-tab' + (privateRecipient === key ? ' active' : '');
+      tab.setAttribute('role', 'button');
+      tab.tabIndex = 0;
+
+      const label = document.createElement('span');
+      label.className = 'dm-tab-label';
+      const shortName = (convo.name || '').split(' ')[0] || key;
+      label.textContent = shortName;
+      tab.appendChild(label);
+
+      const unread = getDmUnread(key);
       if (unread > 0) {
         const badge = document.createElement('span');
         badge.className = 'dm-unread-badge';
         badge.textContent = unread > 99 ? '99+' : unread;
         tab.appendChild(badge);
       }
+
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'dm-tab-close';
+      closeBtn.setAttribute('aria-label', 'Close tab');
+      closeBtn.textContent = '×';
+      closeBtn.addEventListener('click', (e) => closeDmTab(key, e));
+      tab.appendChild(closeBtn);
+
       tab.addEventListener('click', () => {
-        const u = participantsCache.find((p) => p.participantNumber === convo.num);
-        const btnEl = dmParticipantList.querySelector(`[data-num="${convo.num}"]`);
-        selectRecipient(convo.num, u ? u.fullName : convo.name, btnEl);
+        const u = participantsCache.find((p) => p.participantNumber === key);
+        const btnEl = dmParticipantList.querySelector(`[data-num="${key}"]`);
+        selectRecipient(key, u ? u.fullName : convo.name, btnEl);
       });
+
       dmConvoTabs.appendChild(tab);
     });
   }
@@ -363,7 +413,7 @@
     privateRecipient = num;
     privateRecipientName = name;
     privateRecipientInput.value = num;
-    ensureDmConversation(num, name);
+    openDmTab(num, name);
 
     dmParticipantList.querySelectorAll('.dm-participant-item').forEach((el) => {
       el.classList.toggle('selected', el === btnEl);
@@ -385,6 +435,7 @@
         showUploadError('Select a recipient for private message');
         return;
       }
+      openDmTab(privateRecipient, privateRecipientName);
       socket.emit('private-message', {
         fromParticipantNumber: chatUser.participantNumber,
         fromFullName: chatUser.fullName,
@@ -529,7 +580,7 @@
     const fromSelf = msg.fromParticipantNumber === chatUser.participantNumber;
     const otherNum = fromSelf ? msg.toParticipantNumber : msg.fromParticipantNumber;
     const otherName = fromSelf ? msg.toFullName : msg.fromFullName;
-    ensureDmConversation(otherNum, otherName);
+    openDmTab(otherNum, otherName);
 
     const isActiveConvo = chatMode === 'private' && chatVisible && privateRecipient === otherNum;
 
