@@ -137,6 +137,17 @@
     }, 30);
   }
 
+  function getMaxCols() {
+    if (window.matchMedia('(min-width: 1100px)').matches) return 6;
+    if (window.matchMedia('(min-width: 768px)').matches) return 4;
+    return 2;
+  }
+
+  function applyGridColumns(photoCount) {
+    const cols = Math.min(Math.max(photoCount, 1), getMaxCols());
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  }
+
   function renderGrid() {
     let photos = allPhotos;
     if (viewMode === 'people' && peopleSelect.value) {
@@ -149,6 +160,7 @@
       return;
     }
     empty.classList.add('hidden');
+    applyGridColumns(photos.length);
 
     photos.forEach((p) => {
       const item = document.createElement('div');
@@ -210,4 +222,11 @@
   }
 
   loadRecap();
+
+  window.addEventListener('resize', () => {
+    const visible = allPhotos.filter((p) =>
+      viewMode !== 'people' || !peopleSelect.value || p.participantNumber === peopleSelect.value
+    );
+    if (visible.length) applyGridColumns(visible.length);
+  });
 })();
