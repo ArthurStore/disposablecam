@@ -17,8 +17,10 @@
   let currentModal = null;
   let viewMode = 'all';
 
-  const heroThumbBtn = document.getElementById('hero-thumb-btn');
-  const heroThumb = document.getElementById('hero-thumb');
+  let coverImageUrl = '';
+
+  const heroBanner = document.getElementById('hero-banner');
+  const heroBannerBg = document.getElementById('hero-banner-bg');
   const recapAmbient = document.getElementById('recap-ambient');
   const heroTitle = document.getElementById('hero-title');
   const heroSubtitle = document.getElementById('hero-subtitle');
@@ -42,13 +44,13 @@
   modalClose.addEventListener('click', closeModal);
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
 
-  if (heroThumbBtn) {
-    heroThumbBtn.addEventListener('click', () => {
-      if (!heroThumb || !heroThumb.src) return;
-      currentModal = { _isCover: true, _coverSrc: heroThumb.src };
+  if (heroBanner) {
+    heroBanner.addEventListener('click', () => {
+      if (!coverImageUrl) return;
+      currentModal = { _isCover: true, _coverSrc: coverImageUrl };
       modalContent.innerHTML = '';
       const img = document.createElement('img');
-      img.src = heroThumb.src;
+      img.src = coverImageUrl;
       modalContent.appendChild(img);
       modalDownload.classList.add('hidden');
       modalOverlay.classList.add('active');
@@ -89,15 +91,11 @@
         heroSubtitle.textContent = data.event.eventSubtitle || '';
         const recapCover = data.event.recapCoverImage || data.event.coverImage;
         if (recapCover) {
-          const coverUrl = url('uploads/' + recapCover);
-          if (heroThumb && heroThumbBtn) {
-            heroThumb.src = coverUrl;
-            heroThumbBtn.classList.remove('hidden');
-          }
-          if (recapAmbient) {
-            recapAmbient.style.backgroundImage = `url('${coverUrl}')`;
-          }
+          coverImageUrl = url('uploads/' + recapCover);
+          if (heroBannerBg) heroBannerBg.style.backgroundImage = `url('${coverImageUrl}')`;
+          if (recapAmbient) recapAmbient.style.backgroundImage = `url('${coverImageUrl}')`;
         }
+        if (heroBanner) heroBanner.classList.remove('hidden');
         document.title = (data.event.eventName || 'Recap') + ' — Moments';
       }
 
