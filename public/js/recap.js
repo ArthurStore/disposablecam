@@ -44,8 +44,10 @@
   const modalCounter = document.getElementById('modal-counter');
   const modalDownload = document.getElementById('modal-download');
 
-  /* ─── Same helpers as live-preview.js ─── */
+  const MO = window.MediaOrientation;
+
   function isLandscapeMedia(el) {
+    if (MO) return MO.isLandscapeMedia(el);
     if (!el) return false;
     const w = el.naturalWidth || el.videoWidth || 0;
     const h = el.naturalHeight || el.videoHeight || 0;
@@ -53,15 +55,29 @@
   }
 
   function applyItemLayout(mediaEl, itemEl, photo) {
+    if (MO) {
+      const orient = MO.applyMediaLayout(mediaEl, itemEl);
+      itemEl.dataset.orient = orient;
+      if (photo) photo._orient = orient;
+      return orient;
+    }
     const landscape = isLandscapeMedia(mediaEl);
     itemEl.classList.toggle('landscape', landscape);
     itemEl.classList.toggle('portrait', !landscape);
     itemEl.dataset.orient = landscape ? 'landscape' : 'portrait';
     mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
     if (photo) photo._orient = landscape ? 'landscape' : 'portrait';
+    return landscape ? 'landscape' : 'portrait';
   }
 
   function bindItemOrientation(mediaEl, itemEl, photo) {
+    if (MO) {
+      MO.bindMediaOrientation(mediaEl, itemEl, () => {
+        applyItemLayout(mediaEl, itemEl, photo);
+        onItemOriented();
+      });
+      return;
+    }
     const done = () => {
       applyItemLayout(mediaEl, itemEl, photo);
       onItemOriented();
@@ -78,6 +94,12 @@
   }
 
   function applyModalLayout(mediaEl) {
+    if (MO) {
+      const orient = MO.applyMediaLayout(mediaEl, modalContent);
+      modalContent.classList.toggle('phone-rotated', orient === 'landscape' && isPhonePortrait());
+      if (currentModal && !currentModal._isCover) currentModal._orient = orient;
+      return;
+    }
     const landscape = isLandscapeMedia(mediaEl);
     modalContent.classList.toggle('landscape', landscape);
     modalContent.classList.toggle('phone-rotated', landscape && isPhonePortrait());

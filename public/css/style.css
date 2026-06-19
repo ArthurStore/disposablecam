@@ -473,19 +473,33 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   background: #000;
   overflow: hidden;
   touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+#viewfinder.preview-portrait #zoom-layer,
+#viewfinder:not(.preview-landscape) #zoom-layer {
+  aspect-ratio: 9 / 16;
+}
+
+#viewfinder.preview-landscape #zoom-layer {
+  aspect-ratio: 16 / 9;
 }
 
 #zoom-layer {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  width: 100%;
+  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   transform-origin: center center;
   transition: transform 0.15s ease-out;
   will-change: transform;
-  /* Prevent zoom from showing black bars — scale is clamped to ≥1 in JS */
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 #camera-preview {
@@ -493,6 +507,9 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
   height: 100%;
   object-fit: cover;
   display: block;
+}
+#viewfinder.preview-landscape #camera-preview {
+  object-fit: contain;
 }
 #camera-preview.mirrored { transform: scaleX(-1); }
 
@@ -940,23 +957,25 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 
 .review-media {
   width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  aspect-ratio: 9 / 16;
 }
 .review-media img,
 .review-media video {
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.review-media.landscape-media {
+  aspect-ratio: 16 / 9;
 }
 .review-media.landscape-media img,
 .review-media.landscape-media video {
-  width: 100%;
-  height: auto;
   object-fit: contain;
 }
 
@@ -1186,12 +1205,15 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 
 .gallery-item {
   position: relative;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 9 / 16;
   overflow: hidden;
   background: var(--surface);
   cursor: pointer;
 }
-.gallery-item.landscape-item { aspect-ratio: 4 / 3; }
+.gallery-item.landscape-item {
+  aspect-ratio: 16 / 9;
+  grid-column: 1 / -1;
+}
 .gallery-item img, .gallery-item video {
   width: 100%; height: 100%;
   object-fit: cover;
@@ -1694,25 +1716,29 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 .media-modal-content .media-wrap {
   position: relative;
   width: 100%;
+  max-width: min(92vw, calc(82vh * 9 / 16));
+  aspect-ratio: 9 / 16;
+  max-height: 82vh;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   border-radius: 12px;
 }
+.media-modal-content .media-wrap.landscape-media {
+  aspect-ratio: 16 / 9;
+  max-width: min(92vw, calc(82vh * 16 / 9));
+}
 .media-modal-content img,
 .media-modal-content video {
-  max-width: 92vw;
-  max-height: 82vh;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   border-radius: 12px;
   display: block;
 }
 .media-wrap.landscape-media img,
 .media-wrap.landscape-media video {
-  width: 100%;
-  height: auto;
-  max-height: 82vh;
   object-fit: contain;
 }
 
@@ -1921,15 +1947,24 @@ button, .btn-primary, .icon-btn, .mode-pill, .zoom-preset-btn,
 .draft-viewer-media {
   width: 100%;
   height: 100%;
+  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  aspect-ratio: 9 / 16;
+}
+.draft-viewer-media.landscape-media {
+  aspect-ratio: 16 / 9;
 }
 .draft-viewer-media img,
 .draft-viewer-media video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.draft-viewer-media.landscape-media img,
+.draft-viewer-media.landscape-media video {
+  object-fit: contain;
 }
 
 /* Snap caption bar variant for draft viewer */

@@ -564,10 +564,39 @@
   }
 
   function detectLandscapeMedia(el) {
+    if (window.MediaOrientation) return MediaOrientation.isLandscapeMedia(el);
     if (!el) return false;
     if (el.videoWidth && el.videoHeight) return el.videoWidth > el.videoHeight;
     if (el.naturalWidth && el.naturalHeight) return el.naturalWidth > el.naturalHeight;
     return false;
+  }
+
+  function applyReviewMediaLayout(el) {
+    if (window.MediaOrientation && reviewMedia) {
+      return MediaOrientation.applyMediaLayout(el, reviewMedia);
+    }
+    if (reviewMedia) reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(el));
+    return detectLandscapeMedia(el) ? 'landscape' : 'portrait';
+  }
+
+  function updatePreviewAspect() {
+    if (!viewfinder || !video) return;
+    if (window.MediaOrientation) {
+      MediaOrientation.applyMediaLayout(video, viewfinder);
+      return;
+    }
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (!w || !h) return;
+    const landscape = w > h;
+    viewfinder.classList.toggle('preview-landscape', landscape);
+    viewfinder.classList.toggle('preview-portrait', !landscape);
+    video.style.objectFit = landscape ? 'contain' : 'cover';
+  }
+
+  if (video) {
+    video.addEventListener('loadedmetadata', updatePreviewAspect);
+    video.addEventListener('resize', updatePreviewAspect);
   }
 
   async function refreshGalleryThumb() {
@@ -821,70 +850,114 @@
     }
   }
 
-  // ─── Camera ───
+  // ─── Camera — hardware ultra-wide via exact deviceId (no digital 0.5×) ───
   let ultrawideDeviceId = null;
 
   async function probeCameraDevices() {
     try {
-      const tmp = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      const tmp = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, advanced: [{ focusMode: 'continuous' }] },
+        audio: false
+      });
       tmp.getTracks().forEach((t) => t.stop());
     } catch (e) {}
     return navigator.mediaDevices.enumerateDevices();
-  }
-
-  function rankUltraWideDevices(devices) {
-    const vids = devices.filter((d) => d.kind === 'videoinput');
-    const scored = vids.map((d) => {
-      const label = (d.label || '').toLowerCase();
-      let score = 0;
-      if (/front|user|selfie|facetime|depth|infrared|\bir\b|tele|telephoto|2x|3x|5x|periscope/i.test(label)) score -= 200;
-      if (/ultra.?wide|ultrawide|0\.5x|0,5x|\buw\b|super.?wide/i.test(label)) score += 300;
-      if (/back|rear|environment|facing back/i.test(label)) score += 10;
-      return { device: d, score };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    return scored.map((s) => s.device);
   }
 
   function isFrontCameraLabel(label) {
     return /front|user|selfie|facetime|depth|infrared|\bir\b/i.test((label || '').toLowerCase());
   }
 
+  function isTelephotoLabel(label) {
+    return /tele|telephoto|2x|3x|5x|periscope|zoom/i.test((label || '').toLowerCase());
+  }
+
   function isUltraWideLabel(label) {
-    return /ultra.?wide|ultrawide|0\.5x|0,5x|\buw\b|super.?wide/i.test((label || '').toLowerCase());
+    return /ultra.?wide|ultrawide|0\.5x|0,5x|\buw\b|super.?wide|wide.?angle/i.test((label || '').toLowerCase());
   }
 
-  async function applyWidestNativeZoom(track) {
-    const caps = track.getCapabilities ? track.getCapabilities() : {};
-    if (!caps.zoom || caps.zoom.min >= 1) return track.getSettings?.()?.zoom ?? 1;
-    try {
-      await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
-      return track.getSettings?.()?.zoom ?? caps.zoom.min;
-    } catch (e) {
-      return caps.zoom.min;
-    }
+  function isRearCameraDevice(device) {
+    if (!device?.deviceId) return false;
+    const label = (device.label || '').toLowerCase();
+    if (isFrontCameraLabel(label)) return false;
+    if (/back|rear|environment|facing back|camera2 0|camera 0/i.test(label)) return true;
+    if (!label) return true;
+    return !isTelephotoLabel(label) || isUltraWideLabel(label);
   }
 
-  async function probeCameraWideFactor(deviceId) {
+  async function probeRearCameraFOV(deviceId) {
     let stream = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          deviceId: { exact: deviceId },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }]
+        },
         audio: false
       });
       const track = stream.getVideoTracks()[0];
-      const wideFactor = await applyWidestNativeZoom(track);
-      return { wideFactor, label: track.label || '' };
+      const settings = track.getSettings?.() || {};
+      const caps = track.getCapabilities?.() || {};
+      const w = settings.width || 0;
+      const h = settings.height || 0;
+      const label = track.label || '';
+      const aspect = w && h ? w / h : 1;
+      const zoomMin = caps.zoom?.min ?? 1;
+      let score = w * h;
+      if (isUltraWideLabel(label)) score += 5e6;
+      if (isTelephotoLabel(label)) score -= 2e6;
+      if (aspect > 1) score += 500000;
+      score += Math.max(0, (1.2 - zoomMin)) * 100000;
+      return { deviceId, label, width: w, height: h, aspect, score };
     } finally {
       if (stream) stream.getTracks().forEach((t) => t.stop());
     }
   }
 
-  async function openBackCameraStream(deviceId) {
-    const video = deviceId
-      ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-      : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
-    return navigator.mediaDevices.getUserMedia({ video, audio: currentMode === 'video' });
+  async function discoverUltraWideDeviceId() {
+    const devices = await probeCameraDevices();
+    const rear = devices.filter((d) => d.kind === 'videoinput' && isRearCameraDevice(d));
+    if (!rear.length) return null;
+
+    const probes = [];
+    for (const dev of rear) {
+      try {
+        probes.push(await probeRearCameraFOV(dev.deviceId));
+      } catch (e) {}
+    }
+    if (!probes.length) return null;
+
+    const labeled = probes.filter((p) => isUltraWideLabel(p.label));
+    if (labeled.length) {
+      labeled.sort((a, b) => b.score - a.score);
+      return labeled[0].deviceId;
+    }
+
+    const nonTele = probes.filter((p) => !isTelephotoLabel(p.label));
+    const pool = nonTele.length >= 2 ? nonTele : probes;
+    pool.sort((a, b) => b.score - a.score);
+
+    if (pool.length >= 2 && pool[0].score > pool[1].score * 1.05) {
+      return pool[0].deviceId;
+    }
+    if (pool.length === 1 && isUltraWideLabel(pool[0].label)) {
+      return pool[0].deviceId;
+    }
+    return null;
+  }
+
+  async function bindUltraWideHardwareStream(deviceId) {
+    return navigator.mediaDevices.getUserMedia({
+      video: {
+        deviceId: { exact: deviceId },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: 'continuous' }]
+      },
+      audio: currentMode === 'video'
+    });
   }
 
   async function tryUltraWideCamera() {
@@ -894,100 +967,50 @@
       currentFacingMode = 'environment';
       ultrawideDeviceId = null;
 
-      let best = null;
-
-      const unifiedAttempts = [
-        { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: { ideal: 0.5, min: 0.5, max: 1 } },
-        { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: { ideal: 0.5 } },
-        { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ zoom: 0.5 }] }
-      ];
-
-      for (const videoConstraint of unifiedAttempts) {
-        let stream = null;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: currentMode === 'video' });
-          const track = stream.getVideoTracks()[0];
-          const wideFactor = await applyWidestNativeZoom(track);
-          const label = track.label || '';
-          const score = (isUltraWideLabel(label) ? 1000 : 0) + (1 - wideFactor) * 100;
-          if (!best || score > best.score) {
-            if (best?.stream) best.stream.getTracks().forEach((t) => t.stop());
-            best = { stream, track, deviceId: track.getSettings?.()?.deviceId, wideFactor, score, label };
-          } else {
-            stream.getTracks().forEach((t) => t.stop());
-          }
-        } catch (e) {
-          if (stream) stream.getTracks().forEach((t) => t.stop());
-        }
-      }
-
-      const devices = await probeCameraDevices();
-      const ranked = rankUltraWideDevices(devices);
-      const seen = new Set();
-
-      for (const dev of ranked) {
-        if (!dev.deviceId || seen.has(dev.deviceId) || isFrontCameraLabel(dev.label)) continue;
-        seen.add(dev.deviceId);
-        try {
-          const probe = await probeCameraWideFactor(dev.deviceId);
-          const label = probe.label || dev.label || '';
-          const score = (isUltraWideLabel(label) ? 1000 : 0) + (1 - probe.wideFactor) * 100;
-          if (!best || score > best.score) {
-            if (best?.stream) best.stream.getTracks().forEach((t) => t.stop());
-            const stream = await openBackCameraStream(dev.deviceId);
-            const track = stream.getVideoTracks()[0];
-            const wideFactor = await applyWidestNativeZoom(track);
-            best = {
-              stream,
-              track,
-              deviceId: dev.deviceId,
-              wideFactor,
-              score: (isUltraWideLabel(label) ? 1000 : 0) + (1 - wideFactor) * 100,
-              label
-            };
-          }
-        } catch (e) {}
-      }
-
-      const ok = best && (isUltraWideLabel(best.label) || best.wideFactor <= 0.85);
-      if (ok) {
-        mediaStream = best.stream;
-        video.srcObject = best.stream;
-        ultrawideDeviceId = best.deviceId || best.track.getSettings?.()?.deviceId || null;
-        nativeZoomActive = best.wideFactor < 1;
-        applyMirror();
-        applyFlash();
-        zoomLevel = 0.5;
-        zoomLayer.style.transform = 'scale(1)';
-        currentZoomPreset = 0.5;
-        updateZoomPill();
+      const ultraWideId = await discoverUltraWideDeviceId();
+      if (!ultraWideId) {
+        await initCamera();
+        currentZoomPreset = 1;
+        document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
+        await setZoom(1);
+        showMicroToast('Ultra-wide lens not available — using main camera');
         return;
       }
 
-      if (best?.stream) best.stream.getTracks().forEach((t) => t.stop());
-      await initCamera(false);
-      currentZoomPreset = 1;
-      document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
-      await setZoom(1);
-      showMicroToast('Ultra-wide lens not available — using main camera');
+      mediaStream = await bindUltraWideHardwareStream(ultraWideId);
+      video.srcObject = mediaStream;
+      ultrawideDeviceId = ultraWideId;
+      applyMirror();
+      applyFlash();
+      zoomLevel = 0.5;
+      zoomLayer.style.transform = 'scale(1)';
+      currentZoomPreset = 0.5;
+      updateZoomPill();
+      updatePreviewAspect();
     } catch (err) {
       console.error('Ultra-wide error:', err);
-      await initCamera(false);
+      ultrawideDeviceId = null;
+      await initCamera();
+      currentZoomPreset = 1;
+      showMicroToast('Ultra-wide lens not available — using main camera');
     }
   }
 
-  async function initCamera(requestUltraWide) {
+  async function initCamera() {
     try {
       if (mediaStream) {
         mediaStream.getTracks().forEach((t) => t.stop());
         mediaStream = null;
       }
       if (video && video.srcObject) video.srcObject = null;
+      ultrawideDeviceId = null;
+
       const constraints = {
         video: {
           facingMode: currentFacingMode,
           width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }]
         },
         audio: currentMode === 'video'
       };
@@ -995,10 +1018,10 @@
       video.srcObject = mediaStream;
       applyMirror();
       applyFlash();
-      // Reset CSS zoom when reinitializing — prevents stale scale
       zoomLayer.style.transform = 'scale(1)';
       zoomLevel = 1;
       nativeZoomActive = false;
+      updatePreviewAspect();
     } catch (err) {
       console.error('Camera error:', err);
     }
@@ -1426,7 +1449,7 @@
     v.loop = true;
     reviewMedia.appendChild(v);
     v.addEventListener('loadedmetadata', () => {
-      reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(v));
+      applyReviewMediaLayout(v);
     });
 
     reviewScreen.classList.remove('hidden');
@@ -1478,7 +1501,7 @@
       pv.loop = true;
       reviewMedia.appendChild(pv);
       pv.addEventListener('loadedmetadata', () => {
-        reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(pv));
+        applyReviewMediaLayout(pv);
       });
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -1679,14 +1702,22 @@
       v.muted = true; v.playsInline = true; v.loop = true;
       draftViewerMedia.appendChild(v);
       v.addEventListener('loadedmetadata', () => {
-        draftViewerMedia.classList.toggle('landscape-media', detectLandscapeMedia(v));
+        if (window.MediaOrientation) {
+          MediaOrientation.bindMediaOrientation(v, draftViewerMedia);
+        } else if (v.videoWidth > v.videoHeight) {
+          draftViewerMedia.classList.add('landscape-media');
+        }
       });
     } else {
       const img = document.createElement('img');
       img.src = item.objUrl;
       img.decoding = 'async';
       img.addEventListener('load', () => {
-        draftViewerMedia.classList.toggle('landscape-media', detectLandscapeMedia(img));
+        if (window.MediaOrientation) {
+          MediaOrientation.bindMediaOrientation(img, draftViewerMedia);
+        } else if (img.naturalWidth > img.naturalHeight) {
+          draftViewerMedia.classList.add('landscape-media');
+        }
       });
       draftViewerMedia.appendChild(img);
     }
@@ -1752,14 +1783,14 @@
       v.muted = true; v.playsInline = true; v.loop = true;
       reviewMedia.appendChild(v);
       v.addEventListener('loadedmetadata', () => {
-        reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(v));
+        applyReviewMediaLayout(v);
       });
     } else {
       const img = document.createElement('img');
       img.src = reviewObjUrl;
       img.decoding = 'async';
       img.addEventListener('load', () => {
-        reviewMedia.classList.toggle('landscape-media', detectLandscapeMedia(img));
+        applyReviewMediaLayout(img);
       });
       reviewMedia.appendChild(img);
     }
@@ -2008,6 +2039,7 @@
           vid.muted = true;
           vid.preload = 'metadata';
           mediaWrap.appendChild(vid);
+          if (window.MediaOrientation) MediaOrientation.bindMediaOrientation(vid, item);
           const badge = document.createElement('span');
           badge.className = 'video-badge';
           badge.textContent = '▶';
@@ -2018,9 +2050,11 @@
           img.alt = 'Photo';
           img.loading = 'lazy';
           img.decoding = 'async';
-          img.addEventListener('load', () => {
-            if (img.naturalWidth > img.naturalHeight) item.classList.add('landscape-item');
-          });
+          if (window.MediaOrientation) {
+            MediaOrientation.bindMediaOrientation(img, item);
+          } else if (img.naturalWidth > img.naturalHeight) {
+            item.classList.add('landscape-item');
+          }
           mediaWrap.appendChild(img);
         }
         if (p.caption && !p.captionBurnedIn) {
@@ -2065,14 +2099,22 @@
       v.src = url('uploads/' + p.filename); v.controls = true; v.autoplay = true;
       wrap.appendChild(v);
       v.addEventListener('loadedmetadata', () => {
-        if (v.videoWidth > v.videoHeight) wrap.classList.add('landscape-media');
+      if (window.MediaOrientation) {
+        MediaOrientation.bindMediaOrientation(v, wrap);
+      } else if (v.videoWidth > v.videoHeight) {
+        wrap.classList.add('landscape-media');
+      }
       });
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + p.filename);
       img.decoding = 'async';
       img.addEventListener('load', () => {
-        if (img.naturalWidth > img.naturalHeight) wrap.classList.add('landscape-media');
+      if (window.MediaOrientation) {
+        MediaOrientation.bindMediaOrientation(img, wrap);
+      } else if (img.naturalWidth > img.naturalHeight) {
+        wrap.classList.add('landscape-media');
+      }
       });
       wrap.appendChild(img);
     }

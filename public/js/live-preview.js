@@ -1,9 +1,9 @@
-/* Live Preview — 3-column masonry + center spotlight */
-
-/* globals io */
+/* Live Preview — 3-column masonry + center spotlight (dynamic aspect) */
 
 (function () {
   'use strict';
+
+  const MO = window.MediaOrientation;
 
   const BASE = (function () {
     const p = window.location.pathname.replace(/\/live\/?$/, '/');
@@ -34,20 +34,30 @@
   const spotlightEl = document.querySelector('.spotlight');
   const microToast = document.getElementById('micro-toast');
 
-  function isLandscapeMedia(el) {
-    if (!el) return false;
-    const w = el.naturalWidth || el.videoWidth || 0;
-    const h = el.naturalHeight || el.videoHeight || 0;
-    return w > 0 && h > 0 && w > h;
-  }
-
   function applySpotlightLayout(mediaEl) {
     if (!spotlightEl) return;
-    const landscape = isLandscapeMedia(mediaEl);
-    spotlightEl.classList.toggle('landscape', landscape);
-    if (mediaEl) {
-      mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+    if (MO) {
+      MO.applyMediaLayout(mediaEl, spotlightEl);
+      return;
     }
+    const landscape = mediaEl && (mediaEl.naturalWidth || mediaEl.videoWidth) > (mediaEl.naturalHeight || mediaEl.videoHeight);
+    spotlightEl.classList.toggle('landscape', landscape);
+    if (mediaEl) mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+  }
+
+  function bindTileOrientation(mediaEl, tileEl) {
+    if (MO) {
+      MO.bindMediaOrientation(mediaEl, tileEl);
+      return;
+    }
+    const apply = () => {
+      const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
+      const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
+      if (w && h && w > h) tileEl.classList.add('landscape');
+    };
+    if (mediaEl.tagName === 'VIDEO') mediaEl.addEventListener('loadedmetadata', apply, { once: true });
+    else if (mediaEl.complete) apply();
+    else mediaEl.addEventListener('load', apply, { once: true });
   }
 
   function startClock() {
@@ -89,7 +99,7 @@
 
   function createTile(item, idx) {
     const el = document.createElement('div');
-    el.className = 'masonry-tile ' + (idx % 3 === 0 ? 'tall' : 'short') + (idx === currentIndex ? ' active' : '');
+    el.className = 'masonry-tile' + (idx === currentIndex ? ' active' : '');
     el.dataset.index = idx;
 
     let mediaEl;
@@ -111,14 +121,7 @@
       mediaEl = img;
     }
 
-    mediaEl.onload = mediaEl.onloadedmetadata = function() {
-      const w = this.naturalWidth || this.videoWidth;
-      const h = this.naturalHeight || this.videoHeight;
-      if (w && h && w > h) {
-        el.classList.remove('tall', 'short');
-        el.classList.add('landscape');
-      }
-    };
+    bindTileOrientation(mediaEl, el);
 
     const name = document.createElement('span');
     name.className = 'tile-name';

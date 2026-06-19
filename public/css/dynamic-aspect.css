@@ -1,0 +1,25 @@
+/* Unified dynamic aspect — portrait 9:16, landscape 16:9 */
+
+.dynamic-aspect,
+.portrait,
+.preview-portrait,
+.masonry-tile:not(.landscape),
+.recap-item.portrait,
+.gallery-item:not(.landscape-item),
+.spotlight:not(.landscape),
+.modal-content.modal-spotlight:not(.landscape),
+.review-media:not(.landscape-media) {
+  aspect-ratio: 9 / 16;
+}
+
+.landscape,
+.landscape-item,
+.landscape-media,
+.preview-landscape,
+.masonry-tile.landscape,
+.recap-item.landscape,
+.spotlight.landscape,
+.modal-content.modal-spotlight.landscape,
+.review-media.landscape-media {
+  aspect-ratio: 16 / 9;
+}
