@@ -18,6 +18,7 @@
   let modalIndex = -1;
   let currentModal = null;
   let viewMode = 'all';
+  let orientPending = 0;
 
   let coverImageUrl = '';
 
@@ -43,6 +44,53 @@
   const modalCounter = document.getElementById('modal-counter');
   const modalDownload = document.getElementById('modal-download');
 
+  /* ─── Same helpers as live-preview.js ─── */
+  function isLandscapeMedia(el) {
+    if (!el) return false;
+    const w = el.naturalWidth || el.videoWidth || 0;
+    const h = el.naturalHeight || el.videoHeight || 0;
+    return w > 0 && h > 0 && w > h;
+  }
+
+  function applyItemLayout(mediaEl, itemEl, photo) {
+    const landscape = isLandscapeMedia(mediaEl);
+    itemEl.classList.toggle('landscape', landscape);
+    itemEl.classList.toggle('portrait', !landscape);
+    itemEl.dataset.orient = landscape ? 'landscape' : 'portrait';
+    mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+    if (photo) photo._orient = landscape ? 'landscape' : 'portrait';
+  }
+
+  function bindItemOrientation(mediaEl, itemEl, photo) {
+    const done = () => {
+      applyItemLayout(mediaEl, itemEl, photo);
+      onItemOriented();
+    };
+    if (mediaEl.tagName === 'VIDEO') {
+      mediaEl.addEventListener('loadedmetadata', done, { once: true });
+      mediaEl.addEventListener('error', onItemOriented, { once: true });
+    } else if (mediaEl.complete && mediaEl.naturalWidth) {
+      done();
+    } else {
+      mediaEl.addEventListener('load', done, { once: true });
+      mediaEl.addEventListener('error', onItemOriented, { once: true });
+    }
+  }
+
+  function applyModalLayout(mediaEl) {
+    const landscape = isLandscapeMedia(mediaEl);
+    modalContent.classList.toggle('landscape', landscape);
+    modalContent.classList.toggle('phone-rotated', landscape && isPhonePortrait());
+    mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+    if (currentModal && !currentModal._isCover) {
+      currentModal._orient = landscape ? 'landscape' : 'portrait';
+    }
+  }
+
+  function isPhonePortrait() {
+    return window.matchMedia('(max-width: 767px) and (orientation: portrait)').matches;
+  }
+
   tabAll.addEventListener('click', () => setView('all'));
   tabPeople.addEventListener('click', () => setView('people'));
   peopleSelect.addEventListener('change', () => renderGrid());
@@ -59,9 +107,9 @@
   });
 
   window.addEventListener('orientationchange', () => {
-    if (currentModal && !currentModal._isCover && modalOverlay.classList.contains('active')) {
-      applyModalMediaClass(currentModal._orient || 'landscape');
-    }
+    if (!modalOverlay.classList.contains('active') || !currentModal || currentModal._isCover) return;
+    const media = modalContent.querySelector('img, video');
+    if (media) applyModalLayout(media);
   });
 
   if (heroBanner) {
@@ -69,10 +117,11 @@
       if (!coverImageUrl) return;
       currentModal = { _isCover: true, _coverSrc: coverImageUrl };
       modalIndex = -1;
-      modalContent.className = 'modal-content';
+      modalContent.className = 'modal-content modal-spotlight';
       modalContent.innerHTML = '';
       const img = document.createElement('img');
       img.src = coverImageUrl;
+      img.onload = () => applyModalLayout(img);
       modalContent.appendChild(img);
       modalDownload.classList.add('hidden');
       modalPrev.classList.add('hidden');
@@ -162,67 +211,11 @@
     }, 30);
   }
 
-  async function detectOrientation(p) {
-    if (p._orient) return p._orient;
-    const src = url('uploads/' + p.filename);
-    let orient = 'landscape';
-
-    if (p.fileType === 'video') {
-      orient = await new Promise((resolve) => {
-        const v = document.createElement('video');
-        v.preload = 'metadata';
-        v.muted = true;
-        v.playsInline = true;
-        const done = (landscape) => {
-          v.removeAttribute('src');
-          v.load();
-          resolve(landscape ? 'landscape' : 'portrait');
-        };
-        v.addEventListener('loadedmetadata', () => done(v.videoWidth > v.videoHeight), { once: true });
-        v.addEventListener('error', () => done(true), { once: true });
-        v.src = src;
-      });
-    } else {
-      try {
-        const res = await fetch(src);
-        if (res.ok && typeof createImageBitmap === 'function') {
-          const blob = await res.blob();
-          const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-          orient = bmp.width >= bmp.height ? 'landscape' : 'portrait';
-          bmp.close();
-        } else {
-          orient = await new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => resolve(img.naturalWidth >= img.naturalHeight ? 'landscape' : 'portrait');
-            img.onerror = () => resolve('landscape');
-            img.src = src;
-          });
-        }
-      } catch (e) {
-        orient = 'landscape';
-      }
-    }
-
-    p._orient = orient;
-    return orient;
-  }
-
-  function groupOrientationRuns(items) {
-    const runs = [];
-    items.forEach(({ photo, orient }) => {
-      const last = runs[runs.length - 1];
-      if (last && last.orient === orient) {
-        last.photos.push(photo);
-      } else {
-        runs.push({ orient, photos: [photo] });
-      }
-    });
-    return runs;
-  }
-
-  function createRecapItem(p, orient, index) {
+  function createRecapItem(p, index) {
     const item = document.createElement('div');
-    item.className = 'recap-item ' + orient;
+    item.className = 'recap-item portrait';
+    item.dataset.index = String(index);
+
     const nameParts = (p.fullName || '').split(' ');
     const tag = nameParts.length > 1
       ? nameParts[0] + ' ' + nameParts[nameParts.length - 1].charAt(0) + '.'
@@ -230,23 +223,24 @@
 
     const mediaEl = document.createElement(p.fileType === 'video' ? 'video' : 'img');
     mediaEl.src = url('uploads/' + p.filename);
-    if (p.fileType !== 'video') {
-      mediaEl.style.imageOrientation = 'from-image';
-    }
     if (p.fileType === 'video') {
       mediaEl.muted = true;
+      mediaEl.playsInline = true;
       mediaEl.preload = 'metadata';
     } else {
       mediaEl.loading = 'lazy';
     }
 
     item.appendChild(mediaEl);
+    bindItemOrientation(mediaEl, item, p);
+
     if (p.fileType === 'video') {
       const videoTag = document.createElement('span');
       videoTag.className = 'video-tag';
       videoTag.innerHTML = '&#9654;';
       item.appendChild(videoTag);
     }
+
     const nameTag = document.createElement('span');
     nameTag.className = 'name-tag';
     nameTag.textContent = tag;
@@ -255,69 +249,87 @@
     return item;
   }
 
-  async function renderGrid() {
+  function onItemOriented() {
+    orientPending = Math.max(0, orientPending - 1);
+    if (orientPending === 0) regroupIntoRows();
+  }
+
+  function regroupIntoRows() {
+    if (!gridsWrap) return;
+    const items = [...gridsWrap.querySelectorAll('.recap-item')]
+      .sort((a, b) => parseInt(a.dataset.index, 10) - parseInt(b.dataset.index, 10));
+    if (!items.length) return;
+
+    const fragment = document.createDocumentFragment();
+    let row = null;
+    let rowOrient = null;
+
+    items.forEach((item) => {
+      const orient = item.dataset.orient || 'portrait';
+      if (!row || rowOrient !== orient) {
+        row = document.createElement('div');
+        row.className = 'recap-row recap-row-' + orient;
+        fragment.appendChild(row);
+        rowOrient = orient;
+      }
+      row.appendChild(item);
+    });
+
+    gridsWrap.innerHTML = '';
+    gridsWrap.appendChild(fragment);
+  }
+
+  function renderGrid() {
     let photos = allPhotos;
     if (viewMode === 'people' && peopleSelect.value) {
       photos = allPhotos.filter((p) => p.participantNumber === peopleSelect.value);
     }
 
-    if (gridsWrap) gridsWrap.innerHTML = '';
     visiblePhotos = photos;
+    orientPending = photos.length;
+
+    if (gridsWrap) gridsWrap.innerHTML = '';
 
     if (!photos.length) {
       empty.classList.remove('hidden');
       if (gridsWrap) gridsWrap.classList.add('hidden');
       return;
     }
+
     empty.classList.add('hidden');
     if (gridsWrap) gridsWrap.classList.remove('hidden');
 
-    const classified = await Promise.all(photos.map(async (photo) => ({
-      photo,
-      orient: await detectOrientation(photo),
-    })));
+    const flatRow = document.createElement('div');
+    flatRow.className = 'recap-row recap-row-loading';
 
-    const runs = groupOrientationRuns(classified);
-    const indexByPhoto = new Map();
-    photos.forEach((p, i) => indexByPhoto.set(p, i));
-
-    runs.forEach((run) => {
-      const row = document.createElement('div');
-      row.className = 'recap-row recap-row-' + run.orient;
-      run.photos.forEach((photo) => {
-        row.appendChild(createRecapItem(photo, run.orient, indexByPhoto.get(photo)));
-      });
-      if (gridsWrap) gridsWrap.appendChild(row);
+    photos.forEach((p, i) => {
+      flatRow.appendChild(createRecapItem(p, i));
     });
-  }
 
-  function isPhonePortrait() {
-    return window.matchMedia('(max-width: 767px) and (orientation: portrait)').matches;
-  }
+    if (gridsWrap) gridsWrap.appendChild(flatRow);
 
-  function applyModalMediaClass(orient) {
-    modalContent.className = 'modal-content';
-    if (orient === 'landscape' && isPhonePortrait()) {
-      modalContent.classList.add('is-landscape-rotated');
-    }
+    if (orientPending === 0) regroupIntoRows();
   }
 
   function renderModalMedia(p) {
+    modalContent.className = 'modal-content modal-spotlight';
     modalContent.innerHTML = '';
-    applyModalMediaClass(p._orient || 'landscape');
+
+    let mediaEl;
     if (p.fileType === 'video') {
-      const v = document.createElement('video');
-      v.src = url('uploads/' + p.filename);
-      v.controls = true;
-      v.autoplay = true;
-      v.playsInline = true;
-      modalContent.appendChild(v);
+      mediaEl = document.createElement('video');
+      mediaEl.src = url('uploads/' + p.filename);
+      mediaEl.controls = true;
+      mediaEl.autoplay = true;
+      mediaEl.playsInline = true;
+      mediaEl.addEventListener('loadedmetadata', () => applyModalLayout(mediaEl), { once: true });
     } else {
-      const img = document.createElement('img');
-      img.src = url('uploads/' + p.filename);
-      img.style.imageOrientation = 'from-image';
-      modalContent.appendChild(img);
+      mediaEl = document.createElement('img');
+      mediaEl.src = url('uploads/' + p.filename);
+      mediaEl.addEventListener('load', () => applyModalLayout(mediaEl), { once: true });
     }
+
+    modalContent.appendChild(mediaEl);
   }
 
   function updateModalNav() {

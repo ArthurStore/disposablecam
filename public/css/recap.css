@@ -276,6 +276,10 @@ body.recap-page {
   grid-template-columns: 1fr;
 }
 
+.recap-row-loading {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .recap-item {
   position: relative;
   width: 100%;
@@ -285,13 +289,16 @@ body.recap-page {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  transition: aspect-ratio 0.25s ease, transform 0.22s ease, box-shadow 0.22s ease;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  /* default portrait — sama seperti .spotlight */
+  aspect-ratio: 9 / 16;
 }
 
 .recap-item.landscape {
   aspect-ratio: 16 / 9;
+  grid-column: 1 / -1;
 }
 
 .recap-item.portrait {
@@ -311,7 +318,11 @@ body.recap-page {
   height: 100%;
   object-fit: cover;
   display: block;
-  image-orientation: from-image;
+}
+
+.recap-item.landscape img,
+.recap-item.landscape video {
+  object-fit: contain;
 }
 
 .recap-item::after {
@@ -509,9 +520,9 @@ body.recap-page {
     display: none;
   }
 
-  .recap-item.landscape,
-  .recap-item.portrait {
-    border-radius: 12px;
+  .recap-item.landscape {
+    aspect-ratio: 16 / 9;
+    grid-column: auto;
   }
 }
 
@@ -601,42 +612,84 @@ body.recap-page {
 
 .modal-overlay.active { display: flex; }
 
-.modal-content {
+/* ─── Modal spotlight — sama logika live-preview ─── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 1000;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 16px 24px;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal-content.modal-spotlight {
+  position: relative;
+  width: 100%;
+  max-width: min(92vw, 420px);
+  aspect-ratio: 9 / 16;
+  max-height: 72dvh;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0a0a0a;
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.modal-content.modal-spotlight.landscape {
+  aspect-ratio: 16 / 9;
+  max-width: min(92vw, calc(72dvh * 16 / 9));
+  max-height: 72dvh;
+}
+
+.modal-content.modal-spotlight img,
+.modal-content.modal-spotlight video {
   width: 100%;
-  max-width: min(92vw, 900px);
-  max-height: 72dvh;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-.modal-content img,
-.modal-content video {
-  max-width: 100%;
-  max-height: 72dvh;
-  width: auto;
-  height: auto;
+.modal-content.modal-spotlight.landscape img,
+.modal-content.modal-spotlight.landscape video {
   object-fit: contain;
-  image-orientation: from-image;
-  border-radius: 14px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 
-/* HP portrait: landscape foto di-rotate otomatis */
+/* HP portrait: landscape canvas di-rotate supaya muat layar */
 @media (max-width: 767px) and (orientation: portrait) {
-  .modal-content.is-landscape-rotated {
+  .modal-content.modal-spotlight.phone-rotated {
+    aspect-ratio: auto;
     max-width: 92vw;
     max-height: 85dvh;
-  }
-
-  .modal-content.is-landscape-rotated img,
-  .modal-content.is-landscape-rotated video {
-    transform: rotate(90deg);
-    transform-origin: center center;
-    max-width: 85dvh;
-    max-height: 92vw;
     width: auto;
     height: auto;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .modal-content.modal-spotlight.phone-rotated img,
+  .modal-content.modal-spotlight.phone-rotated video {
+    transform: rotate(90deg);
+    transform-origin: center center;
+    width: auto;
+    height: auto;
+    max-width: 85dvh;
+    max-height: 92vw;
+    object-fit: contain;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   }
 }
 
