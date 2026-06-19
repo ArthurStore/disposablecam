@@ -45,6 +45,10 @@ const photoSchema = new mongoose.Schema({
     type: Number,
     default: 50
   },
+  captionBurnedIn: {
+    type: Boolean,
+    default: false
+  },
   fileSize: {
     type: Number,
     default: 0

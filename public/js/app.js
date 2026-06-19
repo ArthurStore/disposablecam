@@ -475,6 +475,94 @@
     parent.appendChild(capEl);
   }
 
+  function getCaptionYPercent(p) {
+    if (p.captionYOffset != null) return p.captionYOffset;
+    return p.captionPosition === 'top' ? 25 : 75;
+  }
+
+  function wrapCanvasLines(ctx, text, maxWidth) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    if (!words.length) return [''];
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function loadBlobAsImage(blob) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(blob);
+      img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Image load failed')); };
+      img.src = objUrl;
+    });
+  }
+
+  async function compositeCaptionOnImage(blob, caption, yPercent) {
+    if (!caption || !blob) return blob;
+    const img = await loadBlobAsImage(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const scale = canvas.width / 390;
+    const fontSize = Math.max(14, Math.round(17 * scale));
+    const padY = Math.round(12 * scale);
+    const padX = Math.round(18 * scale);
+    const barMinH = Math.round(48 * scale);
+    const lineHeight = fontSize * 1.35;
+
+    ctx.font = `500 ${fontSize}px -apple-system, "Helvetica Neue", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const maxWidth = canvas.width - padX * 2;
+    const lines = wrapCanvasLines(ctx, caption, maxWidth);
+    const textH = lines.length * lineHeight;
+    const barH = Math.max(barMinH, textH + padY * 2);
+    const centerY = ((yPercent != null ? yPercent : 50) / 100) * canvas.height;
+    const barTop = Math.max(0, Math.min(canvas.height - barH, centerY - barH / 2));
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.fillRect(0, barTop, canvas.width, barH);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+    let textY = barTop + padY + lineHeight / 2;
+    for (const line of lines) {
+      ctx.fillText(line, canvas.width / 2, textY);
+      textY += lineHeight;
+    }
+
+    return new Promise((resolve) => {
+      canvas.toBlob((out) => resolve(out || blob), 'image/jpeg', 0.92);
+    });
+  }
+
+  window.dcCompositeCaptionOnImage = compositeCaptionOnImage;
+
+  async function getMediaDownloadBlob(p) {
+    const srcUrl = url('uploads/' + p.filename);
+    if (p.caption && !p.captionBurnedIn && p.fileType !== 'video') {
+      const res = await fetch(srcUrl);
+      const blob = await res.blob();
+      return compositeCaptionOnImage(blob, p.caption, getCaptionYPercent(p));
+    }
+    const res = await fetch(srcUrl);
+    return res.blob();
+  }
+
   function detectLandscapeMedia(el) {
     if (!el) return false;
     if (el.videoWidth && el.videoHeight) return el.videoWidth > el.videoHeight;
@@ -512,14 +600,20 @@
     }
   }
 
-  function downloadMedia(p) {
-    const a = document.createElement('a');
-    a.href = url('uploads/' + p.filename);
-    a.download = p.originalName || p.filename;
-    a.target = '_blank';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  async function downloadMedia(p) {
+    try {
+      const blob = await getMediaDownloadBlob(p);
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = p.originalName || p.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+    } catch (e) {
+      showMicroToast('Download failed');
+    }
   }
 
   // ─── Registration ───
@@ -1792,14 +1886,28 @@
     uploadProgress.classList.remove('hidden');
     progressFill.style.width = '30%';
 
+    let uploadBlob = blob;
+    let captionBurnedIn = false;
+    const capText = (caption || '').trim();
+    const isImage = mimetype && mimetype.startsWith('image');
+    if (capText && isImage) {
+      try {
+        uploadBlob = await compositeCaptionOnImage(blob, capText, capY);
+        captionBurnedIn = true;
+      } catch (e) {
+        console.error('Caption composite failed:', e);
+      }
+    }
+
     const formData = new FormData();
-    formData.append('media', blob, filename);
+    formData.append('media', uploadBlob, filename);
     formData.append('participantNumber', currentUser.participantNumber);
     formData.append('fullName', currentUser.fullName);
     formData.append('gender', currentUser.gender);
-    formData.append('caption', caption || '');
+    formData.append('caption', capText);
     formData.append('captionPosition', capPos || 'bottom');
     formData.append('captionYOffset', String(capY != null ? capY : 50));
+    if (captionBurnedIn) formData.append('captionBurnedIn', 'true');
 
     const isVideo = mimetype && mimetype.startsWith('video');
     const controller = new AbortController();
@@ -1889,8 +1997,8 @@
           });
           mediaWrap.appendChild(img);
         }
-        if (p.caption) {
-          applyCaptionOverlay(mediaWrap, p.caption, p.captionYOffset != null ? p.captionYOffset : (p.captionPosition === 'top' ? 25 : 75));
+        if (p.caption && !p.captionBurnedIn) {
+          applyCaptionOverlay(mediaWrap, p.caption, getCaptionYPercent(p));
         }
         item.appendChild(mediaWrap);
 
@@ -1942,11 +2050,10 @@
       });
       wrap.appendChild(img);
     }
-    if (p.caption) {
+    if (p.caption && !p.captionBurnedIn) {
       const capEl = document.createElement('div');
       capEl.className = 'snap-modal-caption snap-caption-bar';
-      const yPos = p.captionYOffset != null ? p.captionYOffset : (p.captionPosition === 'top' ? 25 : 75);
-      capEl.style.top = yPos + '%';
+      capEl.style.top = getCaptionYPercent(p) + '%';
       capEl.innerHTML = `<span>${escapeHtml(p.caption)}</span>`;
       wrap.appendChild(capEl);
     }

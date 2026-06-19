@@ -58,6 +58,7 @@
   const adminPrivateFeed = document.getElementById('admin-private-feed');
 
   let allUsers = [];
+  let presenceMap = new Map();
   let rosterGenderFilter = 'all';
   let rosterSortOrder = 'asc';
   let rosterExpanded = true;
@@ -118,12 +119,68 @@
     loadStats();
     loadSystem();
     loadUsers();
+    loadPresence();
     loadEventConfig();
     loadChatMonitor();
     loadPrivateMonitor();
     initAdminSocket();
     setInterval(loadStats, 10000);
     setInterval(loadSystem, 5000);
+    setInterval(loadPresence, 15000);
+  }
+
+  async function loadPresence() {
+    try {
+      const res = await fetch(api('admin/presence'));
+      if (!res.ok) return;
+      const list = await res.json();
+      applyPresenceList(list);
+    } catch (err) {}
+  }
+
+  function applyPresenceList(list) {
+    presenceMap.clear();
+    (list || []).forEach((p) => {
+      const key = String(p.participantNumber || '').trim();
+      if (key) presenceMap.set(key, p);
+    });
+    renderUsersTable();
+  }
+
+  function normPn(n) {
+    return String(n == null ? '' : n).trim();
+  }
+
+  function isUserOnline(u) {
+    return presenceMap.has(normPn(u.participantNumber));
+  }
+
+  function getUserDevice(u) {
+    const entry = presenceMap.get(normPn(u.participantNumber));
+    return entry && entry.device ? entry.device : null;
+  }
+
+  function formatDeviceLabel(device) {
+    if (!device) return '—';
+    const parts = [];
+    if (device.os && device.os !== 'Unknown') {
+      let osLine = device.os;
+      if (device.osVersion) osLine += ' ' + device.osVersion;
+      parts.push(osLine);
+    }
+    const hardware = [device.brand, device.model].filter(Boolean).join(' ').trim();
+    if (hardware) parts.push(hardware);
+    return parts.length ? parts.join(' · ') : '—';
+  }
+
+  function renderConnectionStatus(u) {
+    if (u.isBanned) {
+      return '<span class="status-banned">Banned</span>';
+    }
+    if (isUserOnline(u)) {
+      return '<span class="status-online"><span class="status-dot online"></span>Online</span>';
+    }
+    return '<span class="status-offline"><span class="status-dot offline"></span>Offline</span>';
   }
 
   async function loadEventConfig() {
@@ -314,6 +371,10 @@
     adminSocket.on('private-message', (msg) => {
       appendAdminChatMsg(adminPrivateFeed, msg, 'private');
     });
+
+    adminSocket.on('presence-update', (list) => {
+      applyPresenceList(list);
+    });
   }
 
   async function loadChatMonitor() {
@@ -492,14 +553,15 @@
 
   function renderUsersTable() {
     const users = getFilteredUsers();
+    const onlineCount = users.filter((u) => !u.isBanned && isUserOnline(u)).length;
     if (rosterTotal) {
-      rosterTotal.textContent = `Total Registered Members: ${allUsers.length}`;
+      rosterTotal.textContent = `Total Registered Members: ${allUsers.length} · Online: ${onlineCount}`;
     }
     usersTbody.innerHTML = '';
 
     if (!rosterExpanded) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="5" class="roster-collapsed-msg">Table minimized — click Expand All to show ${users.length} row(s)</td>`;
+      tr.innerHTML = `<td colspan="6" class="roster-collapsed-msg">Table minimized — click Expand All to show ${users.length} row(s)</td>`;
       usersTbody.appendChild(tr);
       return;
     }
@@ -507,11 +569,13 @@
     users.forEach((u) => {
       const tr = document.createElement('tr');
       const genderLabel = formatGenderLabel(u.gender);
+      const device = getUserDevice(u);
       tr.innerHTML = `
         <td>${escapeHtml(u.participantNumber)}</td>
         <td>${escapeHtml(u.fullName)}</td>
         <td>${genderLabel === 'Laki - Laki' ? '♂ Laki - Laki' : '♀ Perempuan'}</td>
-        <td><span class="${u.isBanned ? 'status-banned' : 'status-active'}">${u.isBanned ? 'Banned' : 'Active'}</span></td>
+        <td>${renderConnectionStatus(u)}</td>
+        <td class="device-cell">${escapeHtml(formatDeviceLabel(device))}</td>
         <td class="action-cell">
           <button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button>
           <button class="btn-delete" data-id="${u._id}">Delete</button>

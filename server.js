@@ -32,6 +32,51 @@ const io = new Server(server, {
   maxHttpBufferSize: 50 * 1024 * 1024
 });
 
+/** Live app clients keyed by participant number */
+const connectedClients = new Map();
+
+function normPresencePn(n) {
+  return String(n == null ? '' : n).trim();
+}
+
+function addConnectedClient(participantNumber, socketId, device) {
+  const key = normPresencePn(participantNumber);
+  if (!key) return;
+  if (!connectedClients.has(key)) {
+    connectedClients.set(key, { socketIds: new Set(), device: device || null, connectedAt: Date.now() });
+  }
+  const entry = connectedClients.get(key);
+  entry.socketIds.add(socketId);
+  if (device) entry.device = device;
+  entry.lastSeen = Date.now();
+}
+
+function removeConnectedClient(participantNumber, socketId) {
+  const key = normPresencePn(participantNumber);
+  const entry = connectedClients.get(key);
+  if (!entry) return;
+  entry.socketIds.delete(socketId);
+  if (entry.socketIds.size === 0) connectedClients.delete(key);
+}
+
+function getPresenceSnapshot() {
+  const list = [];
+  connectedClients.forEach((entry, participantNumber) => {
+    list.push({
+      participantNumber,
+      online: true,
+      device: entry.device || null,
+      connectedAt: entry.connectedAt,
+      lastSeen: entry.lastSeen
+    });
+  });
+  return list;
+}
+
+function emitPresenceToAdmin() {
+  io.to('admin').emit('presence-update', getPresenceSnapshot());
+}
+
 connectDB();
 
 // Middleware
@@ -110,6 +155,62 @@ function normalizeGender(gender) {
   return null;
 }
 
+function escapeDrawtext(text) {
+  return String(text || '')
+    .slice(0, 200)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "'\\''")
+    .replace(/:/g, '\\:')
+    .replace(/%/g, '\\%');
+}
+
+function buildCaptionDrawtextFilter(caption, yPercent) {
+  const yFrac = Math.min(97, Math.max(3, parseFloat(yPercent) || 50)) / 100;
+  const text = escapeDrawtext(caption);
+  return `drawtext=text='${text}':fontsize=24:fontcolor=white@0.72:box=1:boxcolor=black@0.72:boxborderw=12:x=(w-text_w)/2:y=h*${yFrac}-th/2`;
+}
+
+function burnCaptionOnMediaFile(filePath, caption, yPercent) {
+  return new Promise((resolve, reject) => {
+    if (!ffmpeg || !caption) return resolve(false);
+    const ext = path.extname(filePath);
+    const tmpOut = filePath + '.captioned' + ext;
+    const vf = buildCaptionDrawtextFilter(caption, yPercent);
+    ffmpeg(filePath)
+      .videoFilters(vf)
+      .outputOptions(['-codec:a', 'copy'])
+      .on('end', () => {
+        try {
+          fs.unlinkSync(filePath);
+          fs.renameSync(tmpOut, filePath);
+          resolve(true);
+        } catch (e) {
+          reject(e);
+        }
+      })
+      .on('error', (err) => {
+        try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch (e) {}
+        reject(err);
+      })
+      .save(tmpOut);
+  });
+}
+
+async function createCaptionedCopy(srcPath, caption, yPercent) {
+  const ext = path.extname(srcPath);
+  const copyName = 'share-' + Date.now() + '-' + Math.round(Math.random() * 1e5) + ext;
+  const copyPath = path.join(path.dirname(srcPath), copyName);
+  fs.copyFileSync(srcPath, copyPath);
+  if (!caption) return copyName;
+  try {
+    await burnCaptionOnMediaFile(copyPath, caption, yPercent);
+    return copyName;
+  } catch (err) {
+    console.error('[CAPTION BURN]: share copy failed —', err.message);
+    return copyName;
+  }
+}
+
 // ─── Initialize admin PIN ───
 async function initAdminPin() {
   const count = await AdminPin.countDocuments();
@@ -167,6 +268,20 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
       return res.status(400).json({ error: 'Invalid participant gender' });
     }
 
+    let captionBurnedIn = false;
+    const capText = (caption || '').trim();
+    const capY = Math.min(97, Math.max(3, parseFloat(captionYOffset) || 50));
+
+    if (capText && fileType === 'video') {
+      try {
+        captionBurnedIn = await burnCaptionOnMediaFile(req.file.path, capText, capY);
+      } catch (err) {
+        console.error('[CAPTION BURN]: video upload —', err.message);
+      }
+    } else if (capText && fileType === 'photo' && req.body.captionBurnedIn === 'true') {
+      captionBurnedIn = true;
+    }
+
     const photo = await Photo.create({
       participantNumber,
       fullName: fullName || user.fullName,
@@ -175,9 +290,10 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
       originalName: req.file.originalname,
       mimetype: req.file.mimetype,
       fileType,
-      caption: caption || '',
+      caption: capText,
       captionPosition: captionPosition === 'top' ? 'top' : 'bottom',
-      captionYOffset: Math.min(97, Math.max(3, parseFloat(captionYOffset) || 50)),
+      captionYOffset: capY,
+      captionBurnedIn,
       fileSize: req.file.size
     });
 
@@ -191,6 +307,7 @@ router.post('/api/upload', handleUpload('media'), async (req, res) => {
       caption: photo.caption,
       captionPosition: photo.captionPosition,
       captionYOffset: photo.captionYOffset,
+      captionBurnedIn: photo.captionBurnedIn,
       uploadedAt: photo.uploadedAt
     });
 
@@ -429,6 +546,10 @@ router.get('/api/admin/users', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
   }
+});
+
+router.get('/api/admin/presence', (req, res) => {
+  res.json(getPresenceSnapshot());
 });
 
 router.post('/api/admin/users', async (req, res) => {
@@ -803,9 +924,19 @@ router.post('/api/chat/share-gallery', async (req, res) => {
     if (photo.participantNumber !== participantNumber) {
       return res.status(403).json({ error: 'Not your media' });
     }
+
+    let filename = photo.filename;
+    if (photo.caption && !photo.captionBurnedIn) {
+      const srcPath = path.join(__dirname, 'uploads', photo.filename);
+      if (fs.existsSync(srcPath)) {
+        const yPos = photo.captionYOffset != null ? photo.captionYOffset : (photo.captionPosition === 'top' ? 25 : 75);
+        filename = await createCaptionedCopy(srcPath, photo.caption, yPos);
+      }
+    }
+
     res.json({
       success: true,
-      filename: photo.filename,
+      filename,
       mediaType: photo.fileType === 'video' ? 'video' : 'image'
     });
   } catch (err) {
@@ -834,6 +965,22 @@ io.on('connection', (socket) => {
 
   socket.on('join-admin', () => {
     socket.join('admin');
+    socket.emit('presence-update', getPresenceSnapshot());
+  });
+
+  socket.on('client-presence', (data) => {
+    const pn = normPresencePn(data && data.participantNumber);
+    if (!pn) return;
+    socket.data.participantNumber = pn;
+    addConnectedClient(pn, socket.id, (data && data.device) || null);
+    emitPresenceToAdmin();
+  });
+
+  socket.on('client-presence-leave', () => {
+    if (!socket.data.participantNumber) return;
+    removeConnectedClient(socket.data.participantNumber, socket.id);
+    delete socket.data.participantNumber;
+    emitPresenceToAdmin();
   });
 
   socket.on('chat-message', async (data) => {
@@ -890,7 +1037,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => console.log('Client disconnected:', socket.id));
+  socket.on('disconnect', () => {
+    if (socket.data.participantNumber) {
+      removeConnectedClient(socket.data.participantNumber, socket.id);
+      emitPresenceToAdmin();
+    }
+    console.log('Client disconnected:', socket.id);
+  });
 });
 
 const PORT = process.env.PORT || 3000;

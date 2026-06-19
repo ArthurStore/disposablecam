@@ -51,6 +51,144 @@
     return t;
   }
 
+  function guessAndroidBrand(model, ua) {
+    const m = ((model || '') + ' ' + (ua || '')).toLowerCase();
+    if (/samsung|sm-|galaxy/i.test(m)) return 'Samsung';
+    if (/xiaomi|redmi|poco|\bmi[\s-]/i.test(m)) return 'Xiaomi';
+    if (/oppo|cph/i.test(m)) return 'Oppo';
+    if (/vivo/i.test(m)) return 'Vivo';
+    if (/realme|rmp/i.test(m)) return 'Realme';
+    if (/infinix/i.test(m)) return 'Infinix';
+    if (/huawei|honor/i.test(m)) return 'Huawei';
+    if (/pixel/i.test(m)) return 'Google';
+    if (/oneplus/i.test(m)) return 'OnePlus';
+    if (/nokia/i.test(m)) return 'Nokia';
+    if (/motorola|moto[\s-]/i.test(m)) return 'Motorola';
+    if (/asus|zenfone|rog phone/i.test(m)) return 'ASUS';
+    return '';
+  }
+
+  function getDeviceInfo() {
+    const ua = navigator.userAgent || '';
+    const info = { os: 'Unknown', osVersion: '', brand: '', model: '' };
+
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+      info.os = 'iOS';
+      info.brand = 'Apple';
+      const ver = ua.match(/OS (\d+[._]\d+[._]?\d*)/);
+      info.osVersion = ver ? ver[1].replace(/_/g, '.') : '';
+      if (/iPhone/i.test(ua)) info.model = 'iPhone';
+      else if (/iPad/i.test(ua)) info.model = 'iPad';
+      else info.model = 'iOS';
+    } else if (/Android/i.test(ua)) {
+      info.os = 'Android';
+      const ver = ua.match(/Android (\d+\.?\d*)/);
+      info.osVersion = ver ? ver[1] : '';
+      const build = ua.match(/;\s*([^;)]+)\s+Build\//i);
+      if (build) {
+        info.model = build[1].trim();
+        info.brand = guessAndroidBrand(info.model, ua);
+      } else {
+        info.model = 'Android';
+      }
+    } else if (/Windows/i.test(ua)) {
+      info.os = 'Windows';
+      info.brand = 'PC';
+      const ver = ua.match(/Windows NT (\d+\.\d+)/);
+      info.osVersion = ver ? ver[1] : '';
+    } else if (/Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua)) {
+      info.os = 'macOS';
+      info.brand = 'Apple';
+      info.model = 'Mac';
+    } else if (/Linux/i.test(ua)) {
+      info.os = 'Linux';
+      info.brand = 'PC';
+    }
+
+    return info;
+  }
+
+  function emitClientPresence() {
+    if (!chatUser) return;
+    socket.emit('client-presence', {
+      participantNumber: chatUser.participantNumber,
+      device: getDeviceInfo()
+    });
+  }
+
+  function leaveClientPresence() {
+    socket.emit('client-presence-leave');
+  }
+
+  window.leaveClientPresence = leaveClientPresence;
+
+  function dmReadStorageKey() {
+    return 'dc_dm_read_' + normPn(chatUser && chatUser.participantNumber);
+  }
+
+  function getDmReadMap() {
+    if (!chatUser) return {};
+    try {
+      return JSON.parse(localStorage.getItem(dmReadStorageKey()) || '{}');
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function setDmReadAt(otherNum, ts) {
+    if (!chatUser) return;
+    const key = normPn(otherNum);
+    const map = getDmReadMap();
+    map[key] = ts || new Date().toISOString();
+    localStorage.setItem(dmReadStorageKey(), JSON.stringify(map));
+  }
+
+  function markDmConvoRead(otherNum) {
+    setDmReadAt(otherNum, new Date().toISOString());
+    clearDmUnread(otherNum);
+  }
+
+  async function syncOfflineDmUnread() {
+    if (!chatUser) return;
+    try {
+      const res = await fetchWithRetry('private-messages/' + encodeURIComponent(chatUser.participantNumber), 2);
+      const messages = await res.json();
+      const readMap = getDmReadMap();
+      const myNum = normPn(chatUser.participantNumber);
+      const unreadBySender = new Map();
+
+      messages.forEach((m) => {
+        const fromNum = normPn(m.fromParticipantNumber);
+        const toNum = normPn(m.toParticipantNumber);
+        if (fromNum === myNum || toNum !== myNum) return;
+
+        const sentAt = new Date(m.sentAt).getTime();
+        const lastRead = readMap[fromNum] ? new Date(readMap[fromNum]).getTime() : 0;
+        if (sentAt > lastRead) {
+          unreadBySender.set(fromNum, (unreadBySender.get(fromNum) || 0) + 1);
+          openDmTab(fromNum, m.fromFullName);
+        }
+      });
+
+      let totalUnread = 0;
+      unreadBySender.forEach((count, num) => {
+        setDmUnread(num, count);
+        totalUnread += count;
+      });
+
+      if (totalUnread > 0) {
+        unreadCount = Math.max(unreadCount, totalUnread);
+        chatBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        chatBadge.classList.remove('hidden');
+      }
+
+      updateDmTabsVisibility();
+      updatePrivateTabBadge();
+    } catch (e) {
+      console.error('Offline DM sync failed:', e);
+    }
+  }
+
   // Detect incognito/private browsing mode
   function detectIncognito() {
     return new Promise((resolve) => {
@@ -152,6 +290,8 @@
     chatUser = user;
     loadParticipants();
     loadHistory(true);
+    syncOfflineDmUnread();
+    emitClientPresence();
   };
 
   chatToggleBtn.addEventListener('click', () => {
@@ -452,7 +592,7 @@
     });
     if (dmSelect && dmSelect.value !== num) dmSelect.value = num;
 
-    clearDmUnread(num);
+    markDmConvoRead(num);
     showDmRecipientPicked(name, num);
     renderDmConvoTabs();
     loadPrivateHistory(true);
@@ -519,11 +659,22 @@
       photos.forEach((p) => {
         const item = document.createElement('div');
         item.className = 'chat-picker-item';
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;width:100%;height:100%;';
         if (p.fileType === 'video') {
-          item.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video>`;
+          wrap.innerHTML = `<video src="${url('uploads/' + p.filename)}" muted preload="metadata"></video>`;
         } else {
-          item.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="" loading="lazy">`;
+          wrap.innerHTML = `<img src="${url('uploads/' + p.filename)}" alt="" loading="lazy">`;
         }
+        if (p.caption && !p.captionBurnedIn) {
+          const cap = document.createElement('div');
+          cap.className = 'snap-caption-bar gallery-caption-overlay';
+          const yPos = p.captionYOffset != null ? p.captionYOffset : (p.captionPosition === 'top' ? 25 : 75);
+          cap.style.top = yPos + '%';
+          cap.innerHTML = `<span>${escapeHtml(p.caption)}</span>`;
+          wrap.appendChild(cap);
+        }
+        item.appendChild(wrap);
         item.addEventListener('click', () => shareGalleryItem(p));
         chatPickerGrid.appendChild(item);
       });
@@ -590,7 +741,9 @@
   }
 
   socket.on('connect', () => {
+    if (chatUser) emitClientPresence();
     if (!chatUser) return;
+    syncOfflineDmUnread();
     if (chatMode === 'public') loadHistory(true);
     else {
       loadParticipants();
@@ -621,6 +774,7 @@
 
     if (viewingConvo) {
       appendPrivateMessage(msg);
+      markDmConvoRead(otherNum);
     } else if (!fromSelf) {
       bumpDmUnread(otherNum);
       bumpUnread();
@@ -719,10 +873,11 @@
       chatMessages.innerHTML = '';
       messages
         .filter((m) =>
-          (m.fromParticipantNumber === chatUser.participantNumber && m.toParticipantNumber === privateRecipient) ||
-          (m.toParticipantNumber === chatUser.participantNumber && m.fromParticipantNumber === privateRecipient)
+          (isSameParticipant(m.fromParticipantNumber, chatUser.participantNumber) && isSameParticipant(m.toParticipantNumber, privateRecipient)) ||
+          (isSameParticipant(m.toParticipantNumber, chatUser.participantNumber) && isSameParticipant(m.fromParticipantNumber, privateRecipient))
         )
         .forEach(appendPrivateMessage);
+      markDmConvoRead(privateRecipient);
     } catch (err) {
       showUploadError('Could not load conversation');
     }
