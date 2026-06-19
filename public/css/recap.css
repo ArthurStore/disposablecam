@@ -348,60 +348,150 @@ body.recap-page {
   font-size: 0.85rem;
 }
 
-/* ─── Tablet / iPad: 4 columns ─── */
+/* ─── Tablet / iPad: satu layar, 4 kolom, hero compact ─── */
 @media (min-width: 768px) {
+  .recap-hero {
+    flex-shrink: 0;
+  }
+
+  /* 16:9 crop — tinggi dibatasi supaya tidak tutupi konten */
+  .hero-banner {
+    width: 100%;
+    height: clamp(130px, 17dvh, 175px);
+    aspect-ratio: auto;
+  }
+
   .hero-overlay {
-    padding: 18px 28px 22px;
+    padding: 10px 22px 12px;
+  }
+
+  .hero-overlay h1 {
+    font-size: clamp(1.05rem, 2vw, 1.55rem);
+    margin-bottom: 2px;
+  }
+
+  .hero-overlay p {
+    font-size: 0.72rem;
+    margin-bottom: 6px;
+  }
+
+  .stat-num {
+    font-size: clamp(0.9rem, 1.6vw, 1.2rem);
+  }
+
+  .stat-label {
+    font-size: 0.62rem;
+  }
+
+  .stats-row {
+    gap: 8px 14px;
   }
 
   .recap-body {
-    padding: 0 24px;
+    flex: 1;
+    min-height: 0;
+    padding: 0 20px 10px;
+  }
+
+  .recap-body-fixed {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+  }
+
+  .pill {
+    padding: 7px 10px;
+    font-size: 0.76rem;
+  }
+
+  .people-picker {
+    margin-top: 6px;
+  }
+
+  .people-picker select {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  .recap-scroll-area {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 8px;
+  }
+
+  .grid-hint {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+    font-size: 0.62rem;
+  }
+
+  /* Satu deret foto — 4 kolom, scroll horizontal jika lebih */
+  .recap-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: calc((100% - 30px) / 4);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    align-items: stretch;
+  }
+
+  .recap-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .recap-item {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    max-height: 100%;
+    align-self: center;
+    border-radius: 12px;
+  }
+
+  .hero-banner-blur {
+    height: 72%;
+  }
+}
+
+/* ─── Desktop: satu layar, 6 kolom ─── */
+@media (min-width: 1100px) {
+  .hero-banner {
+    height: clamp(145px, 16dvh, 190px);
+  }
+
+  .hero-overlay {
+    padding: 12px 36px 14px;
+    max-width: none;
+  }
+
+  .recap-body {
+    padding: 0 28px 12px;
   }
 
   .recap-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    grid-auto-columns: calc((100% - 60px) / 6);
+    gap: 12px;
+    max-width: none;
+    margin: 0;
   }
 
   .recap-item {
     border-radius: 14px;
   }
-}
-
-/* ─── Desktop: 6 columns, full bleed hero ─── */
-@media (min-width: 1100px) {
-  .hero-overlay {
-    padding: 22px 40px 28px;
-    max-width: 1600px;
-    margin: 0 auto;
-    left: 0;
-    right: 0;
-  }
-
-  .recap-body {
-    padding: 0 32px;
-  }
-
-  .recap-body-fixed {
-    width: 100%;
-  }
-
-  .recap-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 12px;
-    max-width: 1600px;
-    margin: 0 auto;
-  }
-
-  .recap-item {
-    border-radius: 16px;
-  }
 
   .grid-hint,
   .recap-empty {
-    max-width: 1600px;
-    margin-left: auto;
-    margin-right: auto;
+    max-width: none;
+    margin: 0;
   }
 }
 
