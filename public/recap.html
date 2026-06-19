@@ -54,10 +54,7 @@
 
     <div class="recap-scroll-area">
       <p class="grid-hint">Tap any photo to preview and download</p>
-      <div id="recap-grids" class="recap-grids">
-        <div id="recap-grid-landscape" class="recap-grid recap-grid-landscape"></div>
-        <div id="recap-grid-portrait" class="recap-grid recap-grid-portrait"></div>
-      </div>
+      <div id="recap-grids" class="recap-grids"></div>
       <p id="recap-empty" class="recap-empty hidden">No moments captured yet</p>
     </div>
   </div>
@@ -67,7 +64,14 @@
     <button id="modal-close" class="modal-close" aria-label="Close">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
+    <button id="modal-prev" class="modal-nav modal-prev" aria-label="Previous">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button id="modal-next" class="modal-nav modal-next" aria-label="Next">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
     <div id="modal-content" class="modal-content"></div>
+    <p id="modal-counter" class="modal-counter hidden"></p>
     <button id="modal-download" class="modal-download">Download</button>
   </div>
 

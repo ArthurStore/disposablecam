@@ -14,6 +14,8 @@
   })();
 
   let allPhotos = [];
+  let visiblePhotos = [];
+  let modalIndex = -1;
   let currentModal = null;
   let viewMode = 'all';
 
@@ -31,13 +33,14 @@
   const tabPeople = document.getElementById('tab-people');
   const peoplePicker = document.getElementById('people-picker');
   const peopleSelect = document.getElementById('people-select');
-  const gridLandscape = document.getElementById('recap-grid-landscape');
-  const gridPortrait = document.getElementById('recap-grid-portrait');
   const gridsWrap = document.getElementById('recap-grids');
   const empty = document.getElementById('recap-empty');
   const modalOverlay = document.getElementById('modal-overlay');
   const modalContent = document.getElementById('modal-content');
   const modalClose = document.getElementById('modal-close');
+  const modalPrev = document.getElementById('modal-prev');
+  const modalNext = document.getElementById('modal-next');
+  const modalCounter = document.getElementById('modal-counter');
   const modalDownload = document.getElementById('modal-download');
 
   tabAll.addEventListener('click', () => setView('all'));
@@ -45,16 +48,36 @@
   peopleSelect.addEventListener('change', () => renderGrid());
   modalClose.addEventListener('click', closeModal);
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  modalPrev.addEventListener('click', (e) => { e.stopPropagation(); showModalAt(modalIndex - 1); });
+  modalNext.addEventListener('click', (e) => { e.stopPropagation(); showModalAt(modalIndex + 1); });
+
+  document.addEventListener('keydown', (e) => {
+    if (!modalOverlay.classList.contains('active')) return;
+    if (e.key === 'ArrowLeft') showModalAt(modalIndex - 1);
+    if (e.key === 'ArrowRight') showModalAt(modalIndex + 1);
+    if (e.key === 'Escape') closeModal();
+  });
+
+  window.addEventListener('orientationchange', () => {
+    if (currentModal && !currentModal._isCover && modalOverlay.classList.contains('active')) {
+      applyModalMediaClass(currentModal._orient || 'landscape');
+    }
+  });
 
   if (heroBanner) {
     heroBanner.addEventListener('click', () => {
       if (!coverImageUrl) return;
       currentModal = { _isCover: true, _coverSrc: coverImageUrl };
+      modalIndex = -1;
+      modalContent.className = 'modal-content';
       modalContent.innerHTML = '';
       const img = document.createElement('img');
       img.src = coverImageUrl;
       modalContent.appendChild(img);
       modalDownload.classList.add('hidden');
+      modalPrev.classList.add('hidden');
+      modalNext.classList.add('hidden');
+      modalCounter.classList.add('hidden');
       modalOverlay.classList.add('active');
     });
   }
@@ -139,10 +162,13 @@
     }, 30);
   }
 
-  function detectOrientation(p) {
+  async function detectOrientation(p) {
+    if (p._orient) return p._orient;
     const src = url('uploads/' + p.filename);
+    let orient = 'landscape';
+
     if (p.fileType === 'video') {
-      return new Promise((resolve) => {
+      orient = await new Promise((resolve) => {
         const v = document.createElement('video');
         v.preload = 'metadata';
         v.muted = true;
@@ -152,36 +178,51 @@
           v.load();
           resolve(landscape ? 'landscape' : 'portrait');
         };
-        v.addEventListener('loadedmetadata', () => {
-          done(v.videoWidth > v.videoHeight);
-        }, { once: true });
+        v.addEventListener('loadedmetadata', () => done(v.videoWidth > v.videoHeight), { once: true });
         v.addEventListener('error', () => done(true), { once: true });
         v.src = src;
       });
-    }
-    return (async () => {
+    } else {
       try {
         const res = await fetch(src);
         if (res.ok && typeof createImageBitmap === 'function') {
           const blob = await res.blob();
           const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-          const landscape = bmp.width >= bmp.height;
+          orient = bmp.width >= bmp.height ? 'landscape' : 'portrait';
           bmp.close();
-          return landscape ? 'landscape' : 'portrait';
+        } else {
+          orient = await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img.naturalWidth >= img.naturalHeight ? 'landscape' : 'portrait');
+            img.onerror = () => resolve('landscape');
+            img.src = src;
+          });
         }
-      } catch (e) { /* fallback below */ }
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve(img.naturalWidth >= img.naturalHeight ? 'landscape' : 'portrait');
-        img.onerror = () => resolve('landscape');
-        img.src = src;
-      });
-    })();
+      } catch (e) {
+        orient = 'landscape';
+      }
+    }
+
+    p._orient = orient;
+    return orient;
   }
 
-  function createRecapItem(p) {
+  function groupOrientationRuns(items) {
+    const runs = [];
+    items.forEach(({ photo, orient }) => {
+      const last = runs[runs.length - 1];
+      if (last && last.orient === orient) {
+        last.photos.push(photo);
+      } else {
+        runs.push({ orient, photos: [photo] });
+      }
+    });
+    return runs;
+  }
+
+  function createRecapItem(p, orient, index) {
     const item = document.createElement('div');
-    item.className = 'recap-item';
+    item.className = 'recap-item ' + orient;
     const nameParts = (p.fullName || '').split(' ');
     const tag = nameParts.length > 1
       ? nameParts[0] + ' ' + nameParts[nameParts.length - 1].charAt(0) + '.'
@@ -210,16 +251,8 @@
     nameTag.className = 'name-tag';
     nameTag.textContent = tag;
     item.appendChild(nameTag);
-    item.addEventListener('click', () => openModal(p));
+    item.addEventListener('click', () => openModal(index));
     return item;
-  }
-
-  function updateGridSections() {
-    const hasLandscape = gridLandscape && gridLandscape.children.length > 0;
-    const hasPortrait = gridPortrait && gridPortrait.children.length > 0;
-    if (gridLandscape) gridLandscape.classList.toggle('hidden', !hasLandscape);
-    if (gridPortrait) gridPortrait.classList.toggle('hidden', !hasPortrait);
-    if (gridsWrap) gridsWrap.classList.toggle('hidden', !hasLandscape && !hasPortrait);
   }
 
   async function renderGrid() {
@@ -228,34 +261,50 @@
       photos = allPhotos.filter((p) => p.participantNumber === peopleSelect.value);
     }
 
-    if (gridLandscape) gridLandscape.innerHTML = '';
-    if (gridPortrait) gridPortrait.innerHTML = '';
+    if (gridsWrap) gridsWrap.innerHTML = '';
+    visiblePhotos = photos;
+
     if (!photos.length) {
       empty.classList.remove('hidden');
-      updateGridSections();
+      if (gridsWrap) gridsWrap.classList.add('hidden');
       return;
     }
     empty.classList.add('hidden');
+    if (gridsWrap) gridsWrap.classList.remove('hidden');
 
-    const classified = await Promise.all(photos.map(async (p) => ({
-      photo: p,
-      orient: await detectOrientation(p),
+    const classified = await Promise.all(photos.map(async (photo) => ({
+      photo,
+      orient: await detectOrientation(photo),
     })));
 
-    classified.forEach(({ photo, orient }) => {
-      const item = createRecapItem(photo);
-      item.classList.add(orient);
-      const target = orient === 'landscape' ? gridLandscape : gridPortrait;
-      if (target) target.appendChild(item);
-    });
+    const runs = groupOrientationRuns(classified);
+    const indexByPhoto = new Map();
+    photos.forEach((p, i) => indexByPhoto.set(p, i));
 
-    updateGridSections();
+    runs.forEach((run) => {
+      const row = document.createElement('div');
+      row.className = 'recap-row recap-row-' + run.orient;
+      run.photos.forEach((photo) => {
+        row.appendChild(createRecapItem(photo, run.orient, indexByPhoto.get(photo)));
+      });
+      if (gridsWrap) gridsWrap.appendChild(row);
+    });
   }
 
-  function openModal(p) {
-    currentModal = p;
+  function isPhonePortrait() {
+    return window.matchMedia('(max-width: 767px) and (orientation: portrait)').matches;
+  }
+
+  function applyModalMediaClass(orient) {
+    modalContent.className = 'modal-content';
+    if (orient === 'landscape' && isPhonePortrait()) {
+      modalContent.classList.add('is-landscape-rotated');
+    }
+  }
+
+  function renderModalMedia(p) {
     modalContent.innerHTML = '';
-    modalDownload.classList.remove('hidden');
+    applyModalMediaClass(p._orient || 'landscape');
     if (p.fileType === 'video') {
       const v = document.createElement('video');
       v.src = url('uploads/' + p.filename);
@@ -269,14 +318,48 @@
       img.style.imageOrientation = 'from-image';
       modalContent.appendChild(img);
     }
+  }
+
+  function updateModalNav() {
+    const isCover = currentModal && currentModal._isCover;
+    const hasPrev = !isCover && modalIndex > 0;
+    const hasNext = !isCover && modalIndex < visiblePhotos.length - 1;
+
+    modalPrev.classList.toggle('hidden', !hasPrev);
+    modalNext.classList.toggle('hidden', !hasNext);
+    modalDownload.classList.toggle('hidden', isCover);
+
+    if (isCover || visiblePhotos.length <= 1) {
+      modalCounter.classList.add('hidden');
+    } else {
+      modalCounter.classList.remove('hidden');
+      modalCounter.textContent = (modalIndex + 1) + ' / ' + visiblePhotos.length;
+    }
+  }
+
+  function openModal(index) {
+    showModalAt(index);
+  }
+
+  function showModalAt(index) {
+    if (index < 0 || index >= visiblePhotos.length) return;
+    modalIndex = index;
+    currentModal = visiblePhotos[index];
+    renderModalMedia(currentModal);
     modalOverlay.classList.add('active');
+    updateModalNav();
   }
 
   function closeModal() {
     modalOverlay.classList.remove('active');
     modalContent.innerHTML = '';
+    modalContent.className = 'modal-content';
     modalDownload.classList.remove('hidden');
+    modalPrev.classList.remove('hidden');
+    modalNext.classList.remove('hidden');
+    modalCounter.classList.add('hidden');
     currentModal = null;
+    modalIndex = -1;
   }
 
   loadRecap();
