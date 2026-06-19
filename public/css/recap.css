@@ -25,7 +25,7 @@ body.recap-page {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  max-height: min(26vh, 160px);
+  max-height: min(32vh, 210px);
   display: flex;
   align-items: flex-end;
   overflow: hidden;
@@ -59,18 +59,18 @@ body.recap-page {
 
 .hero-content h1 {
   font-family: 'Montserrat', 'Poppins', sans-serif;
-  font-size: clamp(1rem, 4vw, 1.5rem);
+  font-size: clamp(1.4rem, 5.5vw, 2.4rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
   text-shadow: 0 2px 16px rgba(0,0,0,0.5);
 }
 
 .hero-content p {
-  font-size: 0.68rem;
+  font-size: clamp(0.75rem, 2vw, 0.9rem);
   color: rgba(255,255,255,0.65);
-  margin-bottom: 5px;
+  margin-bottom: 7px;
   font-weight: 500;
 }
 
@@ -87,7 +87,7 @@ body.recap-page {
 }
 
 .stat-num {
-  font-size: clamp(1rem, 3.2vw, 1.35rem);
+  font-size: clamp(1.2rem, 4vw, 1.7rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -98,7 +98,7 @@ body.recap-page {
 }
 
 .stat-label {
-  font-size: 0.65rem;
+  font-size: clamp(0.62rem, 1.6vw, 0.75rem);
   color: rgba(255,255,255,0.45);
   text-transform: uppercase;
   letter-spacing: 0.08em;

@@ -857,21 +857,48 @@
       const devices = await probeCameraDevices();
       const vids = devices.filter((d) => d.kind === 'videoinput');
 
-      // Probe each back-facing camera to find the one with the widest
-      // native zoom range. The ultra-wide lens reports the smallest
-      // zoom.min (commonly 0.5) when supported by MediaTrack zoom.
+      // Probe only back-facing cameras. We explicitly request
+      // facingMode: environment so the browser rejects front cameras.
+      // Some devices enumerate all cameras but only serve the right one
+      // when facingMode is forced alongside deviceId.
       const candidates = [];
       for (const dev of vids) {
         let stream = null;
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              deviceId: { exact: dev.deviceId },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
-            },
-            audio: false
-          });
+          // Try with facingMode constraint first to guarantee back camera
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                deviceId: { exact: dev.deviceId },
+                facingMode: { exact: 'environment' },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+              },
+              audio: false
+            });
+          } catch (_) {
+            // Device may not support exact facingMode (desktop/single cam) — try without
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                deviceId: { exact: dev.deviceId },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+              },
+              audio: false
+            });
+            // Confirm it is not front-facing before accepting
+            const tmpTrack = stream.getVideoTracks()[0];
+            const tmpSettings = tmpTrack.getSettings ? tmpTrack.getSettings() : {};
+            const tmpLabel = (dev.label || '').toLowerCase();
+            const isFront = tmpSettings.facingMode === 'user' ||
+              /front|user|selfie/i.test(tmpLabel);
+            if (isFront) {
+              stream.getTracks().forEach((t) => t.stop());
+              stream = null;
+            }
+          }
+          if (!stream) continue;
+
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities ? track.getCapabilities() : {};
           const zoomMin = caps.zoom && typeof caps.zoom.min === 'number' ? caps.zoom.min : null;
@@ -882,40 +909,24 @@
         }
       }
 
-      // Strictly exclude front/selfie cameras based on facingMode setting
-      // first, then rank remaining by ultra-wide capability.
+      // Pick the best ultra-wide candidate: prefer lowest zoom.min, then label hints
       const ultraRe = /ultra|0\.5|uw|ultra-wide|super-wide|superwide/i;
-      const frontLabelRe = /front|user|selfie|depth|infrared|\bir/i;
 
-      const backOnly = candidates.filter((c) => {
-        const fm = c.settings.facingMode;
-        if (fm === 'user') return false;
-        const label = (c.dev.label || '').toLowerCase();
-        if (frontLabelRe.test(label)) return false;
-        return true;
-      });
-
-      // If filtering removed everything, fall back to all candidates (desktop/no facingMode)
-      const pool = backOnly.length > 0 ? backOnly : candidates;
-
-      pool.sort((a, b) => {
-        const aUltrawide = a.zoomMin !== null && a.zoomMin <= 0.6;
-        const bUltrawide = b.zoomMin !== null && b.zoomMin <= 0.6;
-        if (aUltrawide !== bUltrawide) return aUltrawide ? -1 : 1;
+      candidates.sort((a, b) => {
+        const aUW = a.zoomMin !== null && a.zoomMin <= 0.6;
+        const bUW = b.zoomMin !== null && b.zoomMin <= 0.6;
+        if (aUW !== bUW) return aUW ? -1 : 1;
         if (a.zoomMin !== null && b.zoomMin !== null) return a.zoomMin - b.zoomMin;
-        const aLabel = (a.dev.label || '').toLowerCase();
-        const bLabel = (b.dev.label || '').toLowerCase();
-        const aUltra = ultraRe.test(aLabel);
-        const bUltra = ultraRe.test(bLabel);
+        const aUltra = ultraRe.test(a.dev.label || '');
+        const bUltra = ultraRe.test(b.dev.label || '');
         if (aUltra !== bUltra) return aUltra ? -1 : 1;
         return 0;
       });
 
-      // Release streams we won't use (both filtered-out front cams and non-picked back cams)
-      const notPicked = candidates.filter((c) => pool.length === 0 || c !== pool[0]);
-      notPicked.forEach((c) => c.stream.getTracks().forEach((t) => t.stop()));
+      // Release all streams except the winner
+      candidates.slice(1).forEach((c) => c.stream.getTracks().forEach((t) => t.stop()));
 
-      const picked = pool[0] || null;
+      const picked = candidates[0] || null;
 
       if (picked) {
         mediaStream = picked.stream;
