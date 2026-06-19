@@ -99,6 +99,11 @@ body.recap-page {
   transform: scale(1.05);
 }
 
+.hero-banner-fade {
+  display: none;
+  pointer-events: none;
+}
+
 /* Zone blur — frosted band at bottom (reference: The Moments) */
 .hero-banner-blur {
   position: absolute;
@@ -292,6 +297,7 @@ body.recap-page {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* HP: landscape full-width, portrait 2 kolom */
 .recap-item {
   position: relative;
   width: 100%;
@@ -308,6 +314,7 @@ body.recap-page {
 
 .recap-item.landscape {
   aspect-ratio: 16 / 9;
+  grid-column: 1 / -1;
 }
 
 .recap-item.portrait {
@@ -327,6 +334,7 @@ body.recap-page {
   height: 100%;
   object-fit: cover;
   display: block;
+  image-orientation: from-image;
 }
 
 .recap-item::after {
@@ -387,28 +395,60 @@ body.recap-page {
 
   .hero-banner {
     width: 100%;
-    height: min(48dvh, calc(100vw * 9 / 16));
+    height: min(44dvh, calc(100vw * 9 / 16));
     aspect-ratio: auto;
     flex-shrink: 0;
   }
 
-  .hero-banner-blur,
+  .hero-banner-fade {
+    display: block;
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 72px;
+    margin-top: -72px;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(5, 5, 8, 0.55) 35%,
+      rgba(5, 5, 8, 0.92) 70%,
+      #050508 100%
+    );
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%);
+    mask-image: linear-gradient(to bottom, transparent, #000 55%);
+    pointer-events: none;
+  }
+
+  .hero-banner-blur {
+    display: block;
+    height: 48%;
+  }
+
   .hero-banner-gradient {
-    display: none;
+    display: block;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0, 0, 0, 0.25) 50%,
+      rgba(5, 5, 8, 0.88) 100%
+    );
   }
 
   .hero-overlay {
     position: relative;
     bottom: auto;
     flex-shrink: 0;
-    padding: 12px 28px 4px;
-    margin-top: -6px;
+    padding: 4px 28px 4px;
+    margin-top: -18px;
     pointer-events: none;
     z-index: 4;
+    background: linear-gradient(to bottom, transparent, rgba(5, 5, 8, 0.4) 25%, transparent 100%);
   }
 
   .hero-overlay h1 {
-    font-size: clamp(1.85rem, 4.2vw, 3rem);
+    font-size: clamp(1.55rem, 3.5vw, 2.45rem);
     margin-bottom: 4px;
     line-height: 1.06;
   }
@@ -464,11 +504,17 @@ body.recap-page {
   .recap-scroll-area {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    padding-bottom: 8px;
+    padding-bottom: 12px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .recap-scroll-area::-webkit-scrollbar {
+    display: none;
   }
 
   .grid-hint {
@@ -478,9 +524,9 @@ body.recap-page {
   }
 
   .recap-grids {
-    flex-shrink: 0;
-    gap: 8px;
-    justify-content: flex-end;
+    flex: 1;
+    min-height: 0;
+    gap: 10px;
   }
 
   .recap-grid-landscape {
@@ -491,10 +537,11 @@ body.recap-page {
     grid-template-rows: auto;
     gap: 10px;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     scrollbar-width: none;
     -ms-overflow-style: none;
     align-items: start;
+    min-height: 0;
   }
 
   .recap-grid-portrait {
@@ -505,10 +552,11 @@ body.recap-page {
     grid-template-rows: auto;
     gap: 10px;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     scrollbar-width: none;
     -ms-overflow-style: none;
     align-items: start;
+    min-height: 0;
   }
 
   .recap-grid-landscape::-webkit-scrollbar,
@@ -520,6 +568,7 @@ body.recap-page {
     aspect-ratio: 16 / 9;
     width: 100%;
     height: auto;
+    grid-column: auto;
     border-radius: 12px;
   }
 
@@ -527,7 +576,6 @@ body.recap-page {
     aspect-ratio: 9 / 16;
     width: 100%;
     height: auto;
-    max-height: min(28dvh, 100%);
     border-radius: 12px;
   }
 }
@@ -535,16 +583,21 @@ body.recap-page {
 /* ─── Desktop: stretch penuh, 6 kolom ─── */
 @media (min-width: 1100px) {
   .hero-banner {
-    height: min(52dvh, calc(100vw * 9 / 16));
+    height: min(46dvh, calc(100vw * 9 / 16));
+  }
+
+  .hero-banner-fade {
+    height: 88px;
+    margin-top: -88px;
   }
 
   .hero-overlay {
-    padding: 14px 40px 6px;
-    margin-top: -10px;
+    padding: 6px 40px 4px;
+    margin-top: -22px;
   }
 
   .hero-overlay h1 {
-    font-size: clamp(2.15rem, 3.5vw, 3.5rem);
+    font-size: clamp(1.75rem, 2.8vw, 2.65rem);
   }
 
   .hero-overlay p {
@@ -587,10 +640,6 @@ body.recap-page {
   .recap-item.landscape,
   .recap-item.portrait {
     border-radius: 14px;
-  }
-
-  .recap-item.portrait {
-    max-height: min(32dvh, 100%);
   }
 
   .grid-hint,
@@ -639,7 +688,11 @@ body.recap-page {
 .modal-content video {
   max-width: min(92vw, 900px);
   max-height: 78vh;
+  max-height: 78dvh;
+  width: auto;
+  height: auto;
   object-fit: contain;
+  image-orientation: from-image;
   border-radius: 14px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }

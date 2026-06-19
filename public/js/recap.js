@@ -153,18 +153,30 @@
           resolve(landscape ? 'landscape' : 'portrait');
         };
         v.addEventListener('loadedmetadata', () => {
-          done(v.videoWidth >= v.videoHeight);
+          done(v.videoWidth > v.videoHeight);
         }, { once: true });
         v.addEventListener('error', () => done(true), { once: true });
         v.src = src;
       });
     }
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(img.naturalWidth >= img.naturalHeight ? 'landscape' : 'portrait');
-      img.onerror = () => resolve('landscape');
-      img.src = src;
-    });
+    return (async () => {
+      try {
+        const res = await fetch(src);
+        if (res.ok && typeof createImageBitmap === 'function') {
+          const blob = await res.blob();
+          const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+          const landscape = bmp.width >= bmp.height;
+          bmp.close();
+          return landscape ? 'landscape' : 'portrait';
+        }
+      } catch (e) { /* fallback below */ }
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth >= img.naturalHeight ? 'landscape' : 'portrait');
+        img.onerror = () => resolve('landscape');
+        img.src = src;
+      });
+    })();
   }
 
   function createRecapItem(p) {
@@ -177,6 +189,9 @@
 
     const mediaEl = document.createElement(p.fileType === 'video' ? 'video' : 'img');
     mediaEl.src = url('uploads/' + p.filename);
+    if (p.fileType !== 'video') {
+      mediaEl.style.imageOrientation = 'from-image';
+    }
     if (p.fileType === 'video') {
       mediaEl.muted = true;
       mediaEl.preload = 'metadata';
@@ -251,6 +266,7 @@
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + p.filename);
+      img.style.imageOrientation = 'from-image';
       modalContent.appendChild(img);
     }
     modalOverlay.classList.add('active');
