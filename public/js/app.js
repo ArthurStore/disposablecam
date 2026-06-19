@@ -854,91 +854,84 @@
       nativeZoomActive = false;
       currentFacingMode = 'environment';
 
-      const attempts = [
-        {
-          video: {
-            facingMode: { exact: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            zoom: { ideal: 0.5, min: 0.5, max: 1 }
-          },
-          audio: currentMode === 'video'
-        },
-        {
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            zoom: { ideal: 0.5 }
-          },
-          audio: currentMode === 'video'
-        },
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            advanced: [{ zoom: 0.5 }]
-          },
-          audio: currentMode === 'video'
-        }
-      ];
-
-      for (const constraints of attempts) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          mediaStream = stream;
-          video.srcObject = stream;
-          const track = stream.getVideoTracks()[0];
-          const caps = track.getCapabilities ? track.getCapabilities() : {};
-          if (caps.zoom && caps.zoom.min <= 0.6) {
-            try {
-              await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
-              nativeZoomActive = true;
-            } catch (e) {}
-          }
-          ultrawideDeviceId = track.getSettings()?.deviceId || null;
-          applyMirror();
-          applyFlash();
-          zoomLevel = 0.5;
-          zoomLayer.style.transform = 'scale(1)';
-          currentZoomPreset = 0.5;
-          updateZoomPill();
-          return;
-        } catch (e) {}
-      }
-
       const devices = await probeCameraDevices();
-      const ranked = rankUltraWideDevices(devices);
-      for (const dev of ranked) {
+      const vids = devices.filter((d) => d.kind === 'videoinput');
+
+      // Probe each back-facing camera to find the one with the widest
+      // native zoom range. The ultra-wide lens reports the smallest
+      // zoom.min (commonly 0.5) when supported by MediaTrack zoom.
+      const candidates = [];
+      for (const dev of vids) {
+        let stream = null;
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
+          stream = await navigator.mediaDevices.getUserMedia({
             video: {
               deviceId: { exact: dev.deviceId },
               width: { ideal: 1920 },
               height: { ideal: 1080 }
             },
-            audio: currentMode === 'video'
+            audio: false
           });
-          mediaStream = stream;
-          video.srcObject = stream;
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities ? track.getCapabilities() : {};
-          if (caps.zoom && caps.zoom.min < 1) {
-            try {
-              await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
-              nativeZoomActive = true;
-            } catch (e) {}
-          }
-          ultrawideDeviceId = dev.deviceId;
-          applyMirror();
-          applyFlash();
-          zoomLevel = 0.5;
-          zoomLayer.style.transform = 'scale(1)';
-          currentZoomPreset = 0.5;
-          updateZoomPill();
-          return;
-        } catch (e) {}
+          const zoomMin = caps.zoom && typeof caps.zoom.min === 'number' ? caps.zoom.min : null;
+          const settings = track.getSettings ? track.getSettings() : {};
+          candidates.push({ dev, track, stream, caps, zoomMin, settings });
+        } catch (e) {
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+        }
+      }
+
+      // Prefer real ultra-wide cameras (zoom.min <= 0.6) over everything,
+      // then fall back to label-based detection. Back/rear cameras only.
+      const ultraRe = /ultra|0\.5|uw|ultra-wide|super-wide|superwide/i;
+      const frontRe = /front|user|selfie|depth|infrared|\bir/i;
+
+      candidates.sort((a, b) => {
+        const aUltrawide = a.zoomMin !== null && a.zoomMin <= 0.6;
+        const bUltrawide = b.zoomMin !== null && b.zoomMin <= 0.6;
+        if (aUltrawide !== bUltrawide) return aUltrawide ? -1 : 1;
+        if (a.zoomMin !== null && b.zoomMin !== null) return a.zoomMin - b.zoomMin;
+        const aLabel = (a.dev.label || '').toLowerCase();
+        const bLabel = (b.dev.label || '').toLowerCase();
+        const aUltra = ultraRe.test(aLabel);
+        const bUltra = ultraRe.test(bLabel);
+        if (aUltra !== bUltra) return aUltra ? -1 : 1;
+        const aFront = frontRe.test(aLabel);
+        const bFront = frontRe.test(bLabel);
+        if (aFront !== bFront) return aFront ? 1 : -1;
+        return 0;
+      });
+
+      // Release streams we won't use
+      let picked = null;
+      for (const c of candidates) {
+        if (picked) {
+          c.stream.getTracks().forEach((t) => t.stop());
+        } else {
+          picked = c;
+        }
+      }
+
+      if (picked) {
+        mediaStream = picked.stream;
+        video.srcObject = mediaStream;
+        const track = picked.track;
+        // Push to the widest available native zoom (typically 0.5x)
+        if (picked.zoomMin !== null && picked.zoomMin < 1) {
+          try {
+            await track.applyConstraints({ advanced: [{ zoom: picked.zoomMin }] });
+            nativeZoomActive = true;
+          } catch (e) {}
+        }
+        ultrawideDeviceId = picked.settings?.deviceId || picked.dev.deviceId || null;
+        applyMirror();
+        applyFlash();
+        zoomLevel = 0.5;
+        zoomLayer.style.transform = 'scale(1)';
+        currentZoomPreset = 0.5;
+        updateZoomPill();
+        return;
       }
 
       await initCamera(false);
