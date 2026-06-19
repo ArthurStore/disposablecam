@@ -60,6 +60,7 @@
   let allUsers = [];
   let presenceMap = new Map();
   let rosterGenderFilter = 'all';
+  let rosterConnFilter = 'all';
   let rosterSortOrder = 'asc';
   let rosterExpanded = true;
 
@@ -535,6 +536,12 @@
       list = list.filter((u) => formatGenderLabel(u.gender) === rosterGenderFilter);
     }
 
+    if (rosterConnFilter === 'online') {
+      list = list.filter((u) => !u.isBanned && isUserOnline(u));
+    } else if (rosterConnFilter === 'offline') {
+      list = list.filter((u) => u.isBanned || !isUserOnline(u));
+    }
+
     if (q) {
       list = list.filter((u) =>
         (u.fullName || '').toLowerCase().includes(q) ||
@@ -611,10 +618,18 @@
     rosterSearch.addEventListener('input', renderUsersTable);
   }
 
-  document.querySelectorAll('.roster-filter').forEach((btn) => {
+  document.querySelectorAll('.roster-filter[data-gender]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.roster-filter').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.roster-filter[data-gender]').forEach((b) => b.classList.toggle('active', b === btn));
       rosterGenderFilter = btn.dataset.gender;
+      renderUsersTable();
+    });
+  });
+
+  document.querySelectorAll('.roster-filter[data-conn]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-filter[data-conn]').forEach((b) => b.classList.toggle('active', b === btn));
+      rosterConnFilter = btn.dataset.conn;
       renderUsersTable();
     });
   });

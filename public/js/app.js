@@ -882,12 +882,23 @@
         }
       }
 
-      // Prefer real ultra-wide cameras (zoom.min <= 0.6) over everything,
-      // then fall back to label-based detection. Back/rear cameras only.
+      // Strictly exclude front/selfie cameras based on facingMode setting
+      // first, then rank remaining by ultra-wide capability.
       const ultraRe = /ultra|0\.5|uw|ultra-wide|super-wide|superwide/i;
-      const frontRe = /front|user|selfie|depth|infrared|\bir/i;
+      const frontLabelRe = /front|user|selfie|depth|infrared|\bir/i;
 
-      candidates.sort((a, b) => {
+      const backOnly = candidates.filter((c) => {
+        const fm = c.settings.facingMode;
+        if (fm === 'user') return false;
+        const label = (c.dev.label || '').toLowerCase();
+        if (frontLabelRe.test(label)) return false;
+        return true;
+      });
+
+      // If filtering removed everything, fall back to all candidates (desktop/no facingMode)
+      const pool = backOnly.length > 0 ? backOnly : candidates;
+
+      pool.sort((a, b) => {
         const aUltrawide = a.zoomMin !== null && a.zoomMin <= 0.6;
         const bUltrawide = b.zoomMin !== null && b.zoomMin <= 0.6;
         if (aUltrawide !== bUltrawide) return aUltrawide ? -1 : 1;
@@ -897,21 +908,14 @@
         const aUltra = ultraRe.test(aLabel);
         const bUltra = ultraRe.test(bLabel);
         if (aUltra !== bUltra) return aUltra ? -1 : 1;
-        const aFront = frontRe.test(aLabel);
-        const bFront = frontRe.test(bLabel);
-        if (aFront !== bFront) return aFront ? 1 : -1;
         return 0;
       });
 
-      // Release streams we won't use
-      let picked = null;
-      for (const c of candidates) {
-        if (picked) {
-          c.stream.getTracks().forEach((t) => t.stop());
-        } else {
-          picked = c;
-        }
-      }
+      // Release streams we won't use (both filtered-out front cams and non-picked back cams)
+      const notPicked = candidates.filter((c) => pool.length === 0 || c !== pool[0]);
+      notPicked.forEach((c) => c.stream.getTracks().forEach((t) => t.stop()));
+
+      const picked = pool[0] || null;
 
       if (picked) {
         mediaStream = picked.stream;

@@ -558,10 +558,18 @@ th {
   outline: none;
 }
 .roster-toolbar input[type="search"]:focus { border-color: var(--accent); }
-.roster-filters, .roster-sort, .roster-expand {
+.roster-filters, .roster-online-filters, .roster-sort, .roster-expand {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+.roster-online-filters {
+  margin-top: 4px;
+}
+.roster-filter[data-conn] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .roster-filter, .roster-sort-btn, .btn-outline-sm {
   padding: 7px 12px;
