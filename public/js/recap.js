@@ -31,7 +31,9 @@
   const tabPeople = document.getElementById('tab-people');
   const peoplePicker = document.getElementById('people-picker');
   const peopleSelect = document.getElementById('people-select');
-  const grid = document.getElementById('recap-grid');
+  const gridLandscape = document.getElementById('recap-grid-landscape');
+  const gridPortrait = document.getElementById('recap-grid-portrait');
+  const gridsWrap = document.getElementById('recap-grids');
   const empty = document.getElementById('recap-empty');
   const modalOverlay = document.getElementById('modal-overlay');
   const modalContent = document.getElementById('modal-content');
@@ -137,50 +139,102 @@
     }, 30);
   }
 
-  function renderGrid() {
+  function detectOrientation(p) {
+    const src = url('uploads/' + p.filename);
+    if (p.fileType === 'video') {
+      return new Promise((resolve) => {
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.muted = true;
+        v.playsInline = true;
+        const done = (landscape) => {
+          v.removeAttribute('src');
+          v.load();
+          resolve(landscape ? 'landscape' : 'portrait');
+        };
+        v.addEventListener('loadedmetadata', () => {
+          done(v.videoWidth >= v.videoHeight);
+        }, { once: true });
+        v.addEventListener('error', () => done(true), { once: true });
+        v.src = src;
+      });
+    }
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img.naturalWidth >= img.naturalHeight ? 'landscape' : 'portrait');
+      img.onerror = () => resolve('landscape');
+      img.src = src;
+    });
+  }
+
+  function createRecapItem(p) {
+    const item = document.createElement('div');
+    item.className = 'recap-item';
+    const nameParts = (p.fullName || '').split(' ');
+    const tag = nameParts.length > 1
+      ? nameParts[0] + ' ' + nameParts[nameParts.length - 1].charAt(0) + '.'
+      : nameParts[0] || '';
+
+    const mediaEl = document.createElement(p.fileType === 'video' ? 'video' : 'img');
+    mediaEl.src = url('uploads/' + p.filename);
+    if (p.fileType === 'video') {
+      mediaEl.muted = true;
+      mediaEl.preload = 'metadata';
+    } else {
+      mediaEl.loading = 'lazy';
+    }
+
+    item.appendChild(mediaEl);
+    if (p.fileType === 'video') {
+      const videoTag = document.createElement('span');
+      videoTag.className = 'video-tag';
+      videoTag.innerHTML = '&#9654;';
+      item.appendChild(videoTag);
+    }
+    const nameTag = document.createElement('span');
+    nameTag.className = 'name-tag';
+    nameTag.textContent = tag;
+    item.appendChild(nameTag);
+    item.addEventListener('click', () => openModal(p));
+    return item;
+  }
+
+  function updateGridSections() {
+    const hasLandscape = gridLandscape && gridLandscape.children.length > 0;
+    const hasPortrait = gridPortrait && gridPortrait.children.length > 0;
+    if (gridLandscape) gridLandscape.classList.toggle('hidden', !hasLandscape);
+    if (gridPortrait) gridPortrait.classList.toggle('hidden', !hasPortrait);
+    if (gridsWrap) gridsWrap.classList.toggle('hidden', !hasLandscape && !hasPortrait);
+  }
+
+  async function renderGrid() {
     let photos = allPhotos;
     if (viewMode === 'people' && peopleSelect.value) {
       photos = allPhotos.filter((p) => p.participantNumber === peopleSelect.value);
     }
 
-    grid.innerHTML = '';
+    if (gridLandscape) gridLandscape.innerHTML = '';
+    if (gridPortrait) gridPortrait.innerHTML = '';
     if (!photos.length) {
       empty.classList.remove('hidden');
+      updateGridSections();
       return;
     }
     empty.classList.add('hidden');
 
-    photos.forEach((p) => {
-      const item = document.createElement('div');
-      item.className = 'recap-item';
-      const nameParts = (p.fullName || '').split(' ');
-      const tag = nameParts.length > 1
-        ? nameParts[0] + ' ' + nameParts[nameParts.length - 1].charAt(0) + '.'
-        : nameParts[0] || '';
+    const classified = await Promise.all(photos.map(async (p) => ({
+      photo: p,
+      orient: await detectOrientation(p),
+    })));
 
-      const mediaEl = document.createElement(p.fileType === 'video' ? 'video' : 'img');
-      mediaEl.src = url('uploads/' + p.filename);
-      if (p.fileType === 'video') {
-        mediaEl.muted = true;
-        mediaEl.preload = 'metadata';
-      } else {
-        mediaEl.loading = 'lazy';
-      }
-
-      item.appendChild(mediaEl);
-      if (p.fileType === 'video') {
-        const videoTag = document.createElement('span');
-        videoTag.className = 'video-tag';
-        videoTag.innerHTML = '&#9654;';
-        item.appendChild(videoTag);
-      }
-      const nameTag = document.createElement('span');
-      nameTag.className = 'name-tag';
-      nameTag.textContent = tag;
-      item.appendChild(nameTag);
-      item.addEventListener('click', () => openModal(p));
-      grid.appendChild(item);
+    classified.forEach(({ photo, orient }) => {
+      const item = createRecapItem(photo);
+      item.classList.add(orient);
+      const target = orient === 'landscape' ? gridLandscape : gridPortrait;
+      if (target) target.appendChild(item);
     });
+
+    updateGridSections();
   }
 
   function openModal(p) {

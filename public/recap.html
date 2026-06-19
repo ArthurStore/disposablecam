@@ -23,19 +23,21 @@
   <div class="recap-shell">
   <header class="recap-hero" id="recap-hero">
     <button type="button" class="hero-banner hidden" id="hero-banner" aria-label="Event cover">
-      <div class="hero-banner-bg" id="hero-banner-bg"></div>
-      <div class="hero-banner-blur" aria-hidden="true"></div>
-      <div class="hero-banner-gradient" aria-hidden="true"></div>
-      <div class="hero-overlay">
-        <h1 id="hero-title">The Moments</h1>
-        <p id="hero-subtitle">Retreat Event</p>
-        <div class="stats-row">
-          <div class="stat"><span id="stat-moments" class="stat-num">0</span><span class="stat-label">Moments</span></div>
-          <div class="stat"><span id="stat-days" class="stat-num">0</span><span class="stat-label">Days</span></div>
-          <div class="stat"><span id="stat-people" class="stat-num">0</span><span class="stat-label">People</span></div>
-        </div>
+      <div class="hero-banner-media">
+        <div class="hero-banner-bg" id="hero-banner-bg"></div>
+        <div class="hero-banner-blur" aria-hidden="true"></div>
+        <div class="hero-banner-gradient" aria-hidden="true"></div>
       </div>
     </button>
+    <div class="hero-overlay">
+      <h1 id="hero-title">The Moments</h1>
+      <p id="hero-subtitle">Retreat Event</p>
+      <div class="stats-row">
+        <div class="stat"><span id="stat-moments" class="stat-num">0</span><span class="stat-label">Moments</span></div>
+        <div class="stat"><span id="stat-days" class="stat-num">0</span><span class="stat-label">Days</span></div>
+        <div class="stat"><span id="stat-people" class="stat-num">0</span><span class="stat-label">People</span></div>
+      </div>
+    </div>
   </header>
 
   <div class="recap-body">
@@ -51,7 +53,10 @@
 
     <div class="recap-scroll-area">
       <p class="grid-hint">Tap any photo to preview and download</p>
-      <div id="recap-grid" class="recap-grid"></div>
+      <div id="recap-grids" class="recap-grids">
+        <div id="recap-grid-landscape" class="recap-grid recap-grid-landscape"></div>
+        <div id="recap-grid-portrait" class="recap-grid recap-grid-portrait"></div>
+      </div>
       <p id="recap-empty" class="recap-empty hidden">No moments captured yet</p>
     </div>
   </div>
