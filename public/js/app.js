@@ -834,18 +834,57 @@
 
   function rankUltraWideDevices(devices) {
     const vids = devices.filter((d) => d.kind === 'videoinput');
-    const ultraRe = /ultra|wide|0\.5|uw|ultra-wide|super-wide/i;
-    const backRe = /back|rear|environment|wide/i;
     const scored = vids.map((d) => {
       const label = (d.label || '').toLowerCase();
       let score = 0;
-      if (ultraRe.test(label)) score += 100;
-      if (backRe.test(label)) score += 10;
-      if (/tele|front|user|selfie|depth|infrared|ir/i.test(label)) score -= 50;
+      if (/front|user|selfie|facetime|depth|infrared|\bir\b|tele|telephoto|2x|3x|5x|periscope/i.test(label)) score -= 200;
+      if (/ultra.?wide|ultrawide|0\.5x|0,5x|\buw\b|super.?wide/i.test(label)) score += 300;
+      if (/back|rear|environment|facing back/i.test(label)) score += 10;
       return { device: d, score };
     });
     scored.sort((a, b) => b.score - a.score);
     return scored.map((s) => s.device);
+  }
+
+  function isFrontCameraLabel(label) {
+    return /front|user|selfie|facetime|depth|infrared|\bir\b/i.test((label || '').toLowerCase());
+  }
+
+  function isUltraWideLabel(label) {
+    return /ultra.?wide|ultrawide|0\.5x|0,5x|\buw\b|super.?wide/i.test((label || '').toLowerCase());
+  }
+
+  async function applyWidestNativeZoom(track) {
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (!caps.zoom || caps.zoom.min >= 1) return track.getSettings?.()?.zoom ?? 1;
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+      return track.getSettings?.()?.zoom ?? caps.zoom.min;
+    } catch (e) {
+      return caps.zoom.min;
+    }
+  }
+
+  async function probeCameraWideFactor(deviceId) {
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      const track = stream.getVideoTracks()[0];
+      const wideFactor = await applyWidestNativeZoom(track);
+      return { wideFactor, label: track.label || '' };
+    } finally {
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    }
+  }
+
+  async function openBackCameraStream(deviceId) {
+    const video = deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+    return navigator.mediaDevices.getUserMedia({ video, audio: currentMode === 'video' });
   }
 
   async function tryUltraWideCamera() {
@@ -853,119 +892,69 @@
       releaseMediaStream();
       nativeZoomActive = false;
       currentFacingMode = 'environment';
+      ultrawideDeviceId = null;
 
-      // Strategy 1: ask for back camera + zoom hint so the browser/OS
-      // picks the widest-angle lens directly (works on Android Chrome and
-      // some iOS 15+ WebKit builds that surface the ultra-wide sensor).
-      const baseVideo = {
-        facingMode: { exact: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      };
+      let best = null;
 
-      let stream = null;
+      const unifiedAttempts = [
+        { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: { ideal: 0.5, min: 0.5, max: 1 } },
+        { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: { ideal: 0.5 } },
+        { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ zoom: 0.5 }] }
+      ];
 
-      // Try with zoom hint first
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { ...baseVideo, zoom: true },
-          audio: currentMode === 'video'
-        });
-      } catch (_) {}
-
-      // Plain back-camera without zoom hint
-      if (!stream) {
+      for (const videoConstraint of unifiedAttempts) {
+        let stream = null;
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: baseVideo,
-            audio: currentMode === 'video'
-          });
-        } catch (_) {}
+          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: currentMode === 'video' });
+          const track = stream.getVideoTracks()[0];
+          const wideFactor = await applyWidestNativeZoom(track);
+          const label = track.label || '';
+          const score = (isUltraWideLabel(label) ? 1000 : 0) + (1 - wideFactor) * 100;
+          if (!best || score > best.score) {
+            if (best?.stream) best.stream.getTracks().forEach((t) => t.stop());
+            best = { stream, track, deviceId: track.getSettings?.()?.deviceId, wideFactor, score, label };
+          } else {
+            stream.getTracks().forEach((t) => t.stop());
+          }
+        } catch (e) {
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+        }
       }
 
-      if (stream) {
-        mediaStream = stream;
-        video.srcObject = stream;
-        const track = stream.getVideoTracks()[0];
-        const caps = track.getCapabilities ? track.getCapabilities() : {};
+      const devices = await probeCameraDevices();
+      const ranked = rankUltraWideDevices(devices);
+      const seen = new Set();
 
-        if (caps.zoom) {
-          const zoomMin = typeof caps.zoom.min === 'number' ? caps.zoom.min : 1;
-          try {
-            await track.applyConstraints({ advanced: [{ zoom: zoomMin }] });
-            nativeZoomActive = true;
-          } catch (_) {}
-        }
-
-        // Strategy 2 (Android): if zoom capability is available but
-        // zoomMin >= 1, we are on the main lens. Try switching to the
-        // ultra-wide by enumerating back cameras and picking the one
-        // whose zoom.min is strictly < 1.
-        if (!nativeZoomActive || (caps.zoom && caps.zoom.min >= 1)) {
-          const devices = await probeCameraDevices();
-          const vids = devices.filter((d) => d.kind === 'videoinput');
-
-          for (const dev of vids) {
-            const lbl = (dev.label || '').toLowerCase();
-            // Skip obvious front cameras
-            if (/front|user|selfie/i.test(lbl)) continue;
-            if (dev.deviceId === (track.getSettings().deviceId || '')) continue;
-
-            let probeStream = null;
-            try {
-              probeStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                  deviceId: { exact: dev.deviceId },
-                  facingMode: 'environment',
-                  width: { ideal: 1920 },
-                  height: { ideal: 1080 }
-                },
-                audio: false
-              });
-              const pTrack = probeStream.getVideoTracks()[0];
-              const pCaps = pTrack.getCapabilities ? pTrack.getCapabilities() : {};
-              const pMin = pCaps.zoom && typeof pCaps.zoom.min === 'number' ? pCaps.zoom.min : 1;
-
-              if (pMin < (caps.zoom ? caps.zoom.min : 1) || /ultra|0\.5|uw|wide/i.test(lbl)) {
-                // This camera is wider — switch to it
-                stream.getTracks().forEach((t) => t.stop());
-
-                // Re-open with audio if needed
-                if (currentMode === 'video') {
-                  probeStream.getTracks().forEach((t) => t.stop());
-                  probeStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                      deviceId: { exact: dev.deviceId },
-                      facingMode: 'environment',
-                      width: { ideal: 1920 },
-                      height: { ideal: 1080 }
-                    },
-                    audio: true
-                  });
-                }
-
-                mediaStream = probeStream;
-                video.srcObject = probeStream;
-                const newTrack = probeStream.getVideoTracks()[0];
-                const newCaps = newTrack.getCapabilities ? newTrack.getCapabilities() : {};
-                if (newCaps.zoom) {
-                  const newMin = typeof newCaps.zoom.min === 'number' ? newCaps.zoom.min : 1;
-                  try {
-                    await newTrack.applyConstraints({ advanced: [{ zoom: newMin }] });
-                    nativeZoomActive = true;
-                  } catch (_) {}
-                }
-                ultrawideDeviceId = dev.deviceId;
-                break;
-              } else {
-                probeStream.getTracks().forEach((t) => t.stop());
-              }
-            } catch (_) {
-              if (probeStream) probeStream.getTracks().forEach((t) => t.stop());
-            }
+      for (const dev of ranked) {
+        if (!dev.deviceId || seen.has(dev.deviceId) || isFrontCameraLabel(dev.label)) continue;
+        seen.add(dev.deviceId);
+        try {
+          const probe = await probeCameraWideFactor(dev.deviceId);
+          const label = probe.label || dev.label || '';
+          const score = (isUltraWideLabel(label) ? 1000 : 0) + (1 - probe.wideFactor) * 100;
+          if (!best || score > best.score) {
+            if (best?.stream) best.stream.getTracks().forEach((t) => t.stop());
+            const stream = await openBackCameraStream(dev.deviceId);
+            const track = stream.getVideoTracks()[0];
+            const wideFactor = await applyWidestNativeZoom(track);
+            best = {
+              stream,
+              track,
+              deviceId: dev.deviceId,
+              wideFactor,
+              score: (isUltraWideLabel(label) ? 1000 : 0) + (1 - wideFactor) * 100,
+              label
+            };
           }
-        }
+        } catch (e) {}
+      }
 
+      const ok = best && (isUltraWideLabel(best.label) || best.wideFactor <= 0.85);
+      if (ok) {
+        mediaStream = best.stream;
+        video.srcObject = best.stream;
+        ultrawideDeviceId = best.deviceId || best.track.getSettings?.()?.deviceId || null;
+        nativeZoomActive = best.wideFactor < 1;
         applyMirror();
         applyFlash();
         zoomLevel = 0.5;
@@ -975,12 +964,14 @@
         return;
       }
 
-      // All strategies failed — fall back to main camera
+      if (best?.stream) best.stream.getTracks().forEach((t) => t.stop());
       await initCamera(false);
       currentZoomPreset = 1;
+      document.querySelectorAll('.zoom-preset-btn').forEach((b) => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
       await setZoom(1);
       showMicroToast('Ultra-wide lens not available — using main camera');
     } catch (err) {
+      console.error('Ultra-wide error:', err);
       await initCamera(false);
     }
   }

@@ -1,4 +1,4 @@
-/* Recap Album — premium dark layout */
+/* Recap Album — compact phone-first layout (same on desktop/tablet) */
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -16,68 +16,77 @@ body.recap-page {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  align-items: center;
 }
 
 .hidden { display: none !important; }
 
-/* ─── Hero ─── */
+/* ─── Hero: 16:9 thumb → title → stats (no wide banner) ─── */
 .recap-hero {
-  position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: min(32vh, 210px);
-  display: flex;
-  align-items: flex-end;
-  overflow: hidden;
+  max-width: 420px;
   flex-shrink: 0;
-}
-
-.hero-bg {
-  position: absolute;
-  inset: 0;
-  background-color: #0d0d0d;
-  background-position: center center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  transform: scale(1.04);
-  transform-origin: center center;
-}
-
-.hero-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 40%, rgba(0,0,0,0.92) 70%, #000 100%);
+  padding: 10px 12px 6px;
 }
 
 .hero-content {
-  position: relative;
-  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
   width: 100%;
-  padding: 0 14px 10px;
+}
+
+.hero-thumb-btn {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  padding: 0;
+  margin: 0 0 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s ease;
+}
+
+.hero-thumb-btn:active { transform: scale(0.98); }
+
+.hero-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  object-position: center center;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
 .hero-content h1 {
   font-family: 'Montserrat', 'Poppins', sans-serif;
-  font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+  font-size: clamp(1rem, 4.2vw, 1.35rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
   margin-bottom: 2px;
-  text-shadow: 0 2px 16px rgba(0,0,0,0.5);
+  width: 100%;
 }
 
 .hero-content p {
-  font-size: clamp(0.75rem, 2vw, 0.9rem);
+  font-size: 0.68rem;
   color: rgba(255,255,255,0.65);
-  margin-bottom: 7px;
+  margin-bottom: 6px;
   font-weight: 500;
 }
 
 .stats-row {
   display: flex;
-  gap: 14px;
+  gap: 12px;
+  justify-content: center;
   align-items: baseline;
+  width: 100%;
 }
 
 .stat {
@@ -87,7 +96,7 @@ body.recap-page {
 }
 
 .stat-num {
-  font-size: clamp(1.2rem, 4vw, 1.7rem);
+  font-size: clamp(0.9rem, 3vw, 1.15rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -98,7 +107,7 @@ body.recap-page {
 }
 
 .stat-label {
-  font-size: clamp(0.62rem, 1.6vw, 0.75rem);
+  font-size: 0.62rem;
   color: rgba(255,255,255,0.45);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -106,21 +115,21 @@ body.recap-page {
   line-height: 1;
 }
 
-/* ─── Body ─── */
+/* ─── Body — fixed phone-width column on all screens ─── */
 .recap-body {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   width: 100%;
-  max-width: 1280px;
+  max-width: 420px;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 0 12px;
 }
 
 .recap-body-fixed {
   flex-shrink: 0;
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .recap-scroll-area {
@@ -129,7 +138,7 @@ body.recap-page {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 60px;
+  padding-bottom: 48px;
 }
 
 .pill-toggle {
@@ -143,16 +152,15 @@ body.recap-page {
 
 .pill {
   flex: 1;
-  padding: 8px 12px;
+  padding: 8px 10px;
   border: none;
   border-radius: 999px;
   background: transparent;
   color: rgba(255,255,255,0.5);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
-  letter-spacing: 0.02em;
 }
 
 .pill.active {
@@ -160,45 +168,43 @@ body.recap-page {
   color: #000;
 }
 
-.people-picker { margin-bottom: 8px; }
+.people-picker { margin-bottom: 6px; }
 
 .people-picker select {
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 12px;
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   outline: none;
 }
 
 .grid-hint {
   text-align: center;
-  font-size: 0.7rem;
-  color: rgba(255,255,255,0.3);
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.28);
   margin-bottom: 8px;
-  letter-spacing: 0.03em;
 }
 
-/* ─── Grid ─── */
+/* ─── Grid: always 2 cols → 4 thumbs visible above fold ─── */
 .recap-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  grid-auto-rows: auto;
+  gap: 7px;
 }
 
 .recap-item {
   position: relative;
-  aspect-ratio: 16 / 9;
-  border-radius: 12px;
+  aspect-ratio: 9 / 16;
+  border-radius: 14px;
   overflow: hidden;
   background: #111;
   cursor: pointer;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .recap-item:active { transform: scale(0.97); }
@@ -211,7 +217,6 @@ body.recap-page {
   display: block;
 }
 
-/* Bottom gradient scrim for name visibility */
 .recap-item::after {
   content: '';
   position: absolute;
@@ -223,10 +228,10 @@ body.recap-page {
 
 .recap-item .name-tag {
   position: absolute;
-  bottom: 10px;
-  left: 11px;
-  right: 11px;
-  font-size: 0.78rem;
+  bottom: 8px;
+  left: 9px;
+  right: 9px;
+  font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -234,7 +239,6 @@ body.recap-page {
   text-shadow: 0 1px 8px rgba(0,0,0,0.95);
   pointer-events: none;
   z-index: 2;
-  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -242,22 +246,25 @@ body.recap-page {
 
 .recap-item .video-tag {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 0.65rem;
+  top: 8px;
+  right: 8px;
+  font-size: 0.62rem;
   background: rgba(0,0,0,0.65);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 7px;
   z-index: 2;
 }
 
+.recap-item.landscape {
+  grid-column: 1 / -1;
+  aspect-ratio: 16 / 9;
+}
+
 .recap-empty {
   text-align: center;
-  padding: 60px 20px;
+  padding: 48px 20px;
   color: rgba(255,255,255,0.3);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 /* ─── Modal ─── */
@@ -290,14 +297,11 @@ body.recap-page {
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: background 0.2s;
 }
-
-.modal-close:hover { background: rgba(255,255,255,0.15); }
 
 .modal-content img,
 .modal-content video {
-  max-width: 92vw;
+  max-width: min(92vw, 640px);
   max-height: 75vh;
   object-fit: contain;
   border-radius: 14px;
@@ -313,31 +317,4 @@ body.recap-page {
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
-  letter-spacing: 0.03em;
-  transition: opacity 0.2s;
-}
-
-.modal-download:hover { opacity: 0.9; }
-
-@media (min-width: 540px) {
-  .recap-grid { gap: 10px; }
-}
-
-@media (min-width: 640px) {
-  .recap-body { padding-left: 24px; padding-right: 24px; }
-  .recap-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-}
-
-@media (min-width: 1024px) {
-  .recap-body { padding-left: 40px; padding-right: 40px; }
-  .recap-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
-}
-
-@media (min-width: 1440px) {
-  .recap-grid { grid-template-columns: repeat(5, 1fr); }
-}
-
-/* Portrait photos still usable inside 16:9 container */
-.recap-item.portrait {
-  aspect-ratio: 16 / 9;
 }

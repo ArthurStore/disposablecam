@@ -16,7 +16,9 @@
   let allPhotos = [];
   let currentModal = null;
   let viewMode = 'all';
-  const heroBg = document.getElementById('hero-bg');
+
+  const heroThumbBtn = document.getElementById('hero-thumb-btn');
+  const heroThumb = document.getElementById('hero-thumb');
   const heroTitle = document.getElementById('hero-title');
   const heroSubtitle = document.getElementById('hero-subtitle');
   const statMoments = document.getElementById('stat-moments');
@@ -35,18 +37,28 @@
 
   tabAll.addEventListener('click', () => setView('all'));
   tabPeople.addEventListener('click', () => setView('people'));
-
   peopleSelect.addEventListener('change', () => renderGrid());
-
   modalClose.addEventListener('click', closeModal);
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
 
+  if (heroThumbBtn) {
+    heroThumbBtn.addEventListener('click', () => {
+      if (!heroThumb || !heroThumb.src) return;
+      currentModal = { _isCover: true, _coverSrc: heroThumb.src };
+      modalContent.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = heroThumb.src;
+      modalContent.appendChild(img);
+      modalDownload.classList.add('hidden');
+      modalOverlay.classList.add('active');
+    });
+  }
+
   modalDownload.addEventListener('click', () => {
-    if (!currentModal) return;
+    if (!currentModal || currentModal._isCover) return;
     const a = document.createElement('a');
     a.href = url('uploads/' + currentModal.filename);
     a.download = currentModal.originalName || currentModal.filename;
-    a.target = '_blank';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -75,8 +87,9 @@
         heroTitle.textContent = data.event.eventName || 'The Moments';
         heroSubtitle.textContent = data.event.eventSubtitle || '';
         const recapCover = data.event.recapCoverImage || data.event.coverImage;
-        if (recapCover) {
-          heroBg.style.backgroundImage = `url('${url('uploads/' + recapCover)}')`;
+        if (recapCover && heroThumb && heroThumbBtn) {
+          heroThumb.src = url('uploads/' + recapCover);
+          heroThumbBtn.classList.remove('hidden');
         }
         document.title = (data.event.eventName || 'Recap') + ' — Moments';
       }
@@ -149,12 +162,10 @@
         mediaEl.loading = 'lazy';
       }
 
-      mediaEl.onload = mediaEl.onloadedmetadata = function() {
+      mediaEl.onload = mediaEl.onloadedmetadata = function () {
         const w = this.naturalWidth || this.videoWidth;
         const h = this.naturalHeight || this.videoHeight;
-        if (w && h && w > h) {
-          item.classList.add('landscape');
-        }
+        if (w && h && w > h) item.classList.add('landscape');
       };
 
       item.appendChild(mediaEl);
@@ -176,6 +187,7 @@
   function openModal(p) {
     currentModal = p;
     modalContent.innerHTML = '';
+    modalDownload.classList.remove('hidden');
     if (p.fileType === 'video') {
       const v = document.createElement('video');
       v.src = url('uploads/' + p.filename);
@@ -194,13 +206,8 @@
   function closeModal() {
     modalOverlay.classList.remove('active');
     modalContent.innerHTML = '';
+    modalDownload.classList.remove('hidden');
     currentModal = null;
-  }
-
-  function escapeHtml(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
   }
 
   loadRecap();
