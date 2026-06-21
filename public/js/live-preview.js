@@ -36,13 +36,25 @@
 
   function applySpotlightLayout(mediaEl) {
     if (!spotlightEl) return;
-    if (MO) {
-      MO.bindMediaOrientation(mediaEl, spotlightEl);
-      return;
+    const doApply = () => {
+      if (MO) {
+        MO.bindMediaOrientation(mediaEl, spotlightEl);
+        return;
+      }
+      const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
+      const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
+      const landscape = w > 0 && h > 0 && w > h;
+      spotlightEl.classList.toggle('landscape', landscape);
+      mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+    };
+    const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
+    const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
+    if (w && h) {
+      doApply();
+    } else {
+      const evt = mediaEl.tagName === 'VIDEO' ? 'loadedmetadata' : 'load';
+      mediaEl.addEventListener(evt, doApply, { once: true });
     }
-    const landscape = mediaEl && (mediaEl.naturalWidth || mediaEl.videoWidth) > (mediaEl.naturalHeight || mediaEl.videoHeight);
-    spotlightEl.classList.toggle('landscape', landscape);
-    if (mediaEl) mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
   }
 
   function bindTileOrientation(mediaEl, tileEl) {
@@ -53,11 +65,16 @@
     const apply = () => {
       const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
       const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
-      if (w && h && w > h) tileEl.classList.add('landscape');
+      tileEl.classList.toggle('landscape', w > 0 && h > 0 && w > h);
+      tileEl.classList.toggle('portrait', !(w > 0 && h > 0 && w > h));
     };
-    if (mediaEl.tagName === 'VIDEO') mediaEl.addEventListener('loadedmetadata', apply, { once: true });
-    else if (mediaEl.complete) apply();
-    else mediaEl.addEventListener('load', apply, { once: true });
+    if (mediaEl.tagName === 'VIDEO') {
+      mediaEl.addEventListener('loadedmetadata', apply, { once: true });
+    } else if (mediaEl.complete && mediaEl.naturalWidth) {
+      apply();
+    } else {
+      mediaEl.addEventListener('load', apply, { once: true });
+    }
   }
 
   function startClock() {
@@ -149,6 +166,8 @@
     updateActiveTiles();
 
     spotlightMedia.innerHTML = '';
+    // Reset orientation before showing new media
+    spotlightEl.classList.remove('landscape');
     clearTimeout(slideTimer);
 
     if (current.fileType === 'video') {
@@ -159,16 +178,16 @@
       vid.playsInline = true;
       vid.loop = false;
       vid.onended = () => advanceSlide();
-      vid.onloadedmetadata = () => applySpotlightLayout(vid);
       spotlightMedia.appendChild(vid);
+      applySpotlightLayout(vid);
       slideTimer = setTimeout(advanceSlide, VIDEO_MAX_DURATION);
       spotlightBar.style.transition = 'none';
       spotlightBar.style.width = '0%';
     } else {
       const img = document.createElement('img');
       img.src = url('uploads/' + current.filename);
-      img.onload = () => applySpotlightLayout(img);
       spotlightMedia.appendChild(img);
+      applySpotlightLayout(img);
       spotlightBar.style.transition = 'none';
       spotlightBar.style.width = '0%';
       requestAnimationFrame(() => {

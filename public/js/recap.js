@@ -94,19 +94,33 @@
   }
 
   function applyModalLayout(mediaEl) {
-    if (MO) {
-      MO.bindMediaOrientation(mediaEl, modalContent, (orient) => {
-        modalContent.classList.toggle('phone-rotated', orient === 'landscape' && isPhonePortrait());
-        if (currentModal && !currentModal._isCover) currentModal._orient = orient;
-      });
-      return;
-    }
-    const landscape = isLandscapeMedia(mediaEl);
-    modalContent.classList.toggle('landscape', landscape);
-    modalContent.classList.toggle('phone-rotated', landscape && isPhonePortrait());
-    mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
-    if (currentModal && !currentModal._isCover) {
-      currentModal._orient = landscape ? 'landscape' : 'portrait';
+    const doApply = () => {
+      if (MO) {
+        MO.bindMediaOrientation(mediaEl, modalContent, (orient) => {
+          modalContent.classList.toggle('phone-rotated', orient === 'landscape' && isPhonePortrait());
+          if (currentModal && !currentModal._isCover) currentModal._orient = orient;
+        });
+        return;
+      }
+      const landscape = isLandscapeMedia(mediaEl);
+      modalContent.classList.toggle('landscape', landscape);
+      modalContent.classList.remove('portrait');
+      modalContent.classList.toggle('phone-rotated', landscape && isPhonePortrait());
+      mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+      if (currentModal && !currentModal._isCover) {
+        currentModal._orient = landscape ? 'landscape' : 'portrait';
+      }
+    };
+
+    // If media dimensions already known (cached), apply immediately
+    const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
+    const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
+    if (w && h) {
+      doApply();
+    } else {
+      // Will fire once dims are available
+      const evtName = mediaEl.tagName === 'VIDEO' ? 'loadedmetadata' : 'load';
+      mediaEl.addEventListener(evtName, doApply, { once: true });
     }
   }
 
@@ -345,14 +359,20 @@
       mediaEl.controls = true;
       mediaEl.autoplay = true;
       mediaEl.playsInline = true;
-      mediaEl.addEventListener('loadedmetadata', () => applyModalLayout(mediaEl), { once: true });
     } else {
       mediaEl = document.createElement('img');
       mediaEl.src = url('uploads/' + p.filename);
-      mediaEl.addEventListener('load', () => applyModalLayout(mediaEl), { once: true });
+    }
+
+    // Apply orientation if known from thumbnail, then confirm once loaded
+    if (p._orient === 'landscape') {
+      modalContent.classList.add('landscape');
+      mediaEl.style.objectFit = 'contain';
     }
 
     modalContent.appendChild(mediaEl);
+    // applyModalLayout handles both cached (immediate) and not-yet-loaded media
+    applyModalLayout(mediaEl);
   }
 
   function updateModalNav() {
