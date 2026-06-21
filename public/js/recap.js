@@ -46,82 +46,34 @@
 
   const MO = window.MediaOrientation;
 
-  function isLandscapeMedia(el) {
-    if (MO) return MO.isLandscapeMedia(el);
-    if (!el) return false;
-    const w = el.naturalWidth || el.videoWidth || 0;
-    const h = el.naturalHeight || el.videoHeight || 0;
-    return w > 0 && h > 0 && w > h;
-  }
 
-  function applyItemLayout(mediaEl, itemEl, photo) {
-    if (MO) {
-      const orient = MO.applyMediaLayout(mediaEl, itemEl);
-      itemEl.dataset.orient = orient;
-      if (photo) photo._orient = orient;
-      return orient;
-    }
-    const landscape = isLandscapeMedia(mediaEl);
-    itemEl.classList.toggle('landscape', landscape);
-    itemEl.classList.toggle('portrait', !landscape);
-    itemEl.dataset.orient = landscape ? 'landscape' : 'portrait';
-    mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
-    if (photo) photo._orient = landscape ? 'landscape' : 'portrait';
-    return landscape ? 'landscape' : 'portrait';
+  function applyItemLayout(mediaEl, itemEl, photo, orient) {
+    itemEl.classList.toggle('landscape', orient === 'landscape');
+    itemEl.classList.toggle('portrait', orient === 'portrait');
+    itemEl.dataset.orient = orient;
+    mediaEl.style.objectFit = orient === 'landscape' ? 'contain' : 'cover';
+    if (photo) photo._orient = orient;
+    return orient;
   }
 
   function bindItemOrientation(mediaEl, itemEl, photo) {
-    if (MO) {
-      MO.bindMediaOrientation(mediaEl, itemEl, () => {
-        applyItemLayout(mediaEl, itemEl, photo);
-        onItemOriented();
-      });
-      return;
-    }
-    const done = () => {
-      applyItemLayout(mediaEl, itemEl, photo);
+    MO.bindMediaOrientation(mediaEl, itemEl, (orient) => {
+      applyItemLayout(mediaEl, itemEl, photo, orient);
       onItemOriented();
-    };
-    if (mediaEl.tagName === 'VIDEO') {
-      mediaEl.addEventListener('loadedmetadata', done, { once: true });
-      mediaEl.addEventListener('error', onItemOriented, { once: true });
-    } else if (mediaEl.complete && mediaEl.naturalWidth) {
-      done();
-    } else {
-      mediaEl.addEventListener('load', done, { once: true });
-      mediaEl.addEventListener('error', onItemOriented, { once: true });
-    }
+    });
   }
 
   function applyModalLayout(mediaEl) {
-    const doApply = () => {
-      if (MO) {
-        MO.bindMediaOrientation(mediaEl, modalContent, (orient) => {
-          modalContent.classList.toggle('phone-rotated', orient === 'landscape' && isPhonePortrait());
-          if (currentModal && !currentModal._isCover) currentModal._orient = orient;
-        });
-        return;
-      }
-      const landscape = isLandscapeMedia(mediaEl);
+    MO.bindMediaOrientation(mediaEl, modalContent, (orient) => {
+      const landscape = orient === 'landscape';
       modalContent.classList.toggle('landscape', landscape);
-      modalContent.classList.remove('portrait');
+      modalContent.classList.toggle('portrait', !landscape);
       modalContent.classList.toggle('phone-rotated', landscape && isPhonePortrait());
       mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
       if (currentModal && !currentModal._isCover) {
-        currentModal._orient = landscape ? 'landscape' : 'portrait';
+        currentModal._orient = orient;
       }
-    };
-
-    // If media dimensions already known (cached), apply immediately
-    const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
-    const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
-    if (w && h) {
-      doApply();
-    } else {
-      // Will fire once dims are available
-      const evtName = mediaEl.tagName === 'VIDEO' ? 'loadedmetadata' : 'load';
-      mediaEl.addEventListener(evtName, doApply, { once: true });
-    }
+    });
   }
 
   function isPhonePortrait() {
@@ -158,8 +110,8 @@
       modalContent.innerHTML = '';
       const img = document.createElement('img');
       img.src = coverImageUrl;
-      img.onload = () => applyModalLayout(img);
       modalContent.appendChild(img);
+      applyModalLayout(img);
       modalDownload.classList.add('hidden');
       modalPrev.classList.add('hidden');
       modalNext.classList.add('hidden');

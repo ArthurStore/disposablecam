@@ -36,45 +36,15 @@
 
   function applySpotlightLayout(mediaEl) {
     if (!spotlightEl) return;
-    const doApply = () => {
-      if (MO) {
-        MO.bindMediaOrientation(mediaEl, spotlightEl);
-        return;
-      }
-      const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
-      const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
-      const landscape = w > 0 && h > 0 && w > h;
+    MO.bindMediaOrientation(mediaEl, spotlightEl, (orient) => {
+      const landscape = orient === 'landscape';
       spotlightEl.classList.toggle('landscape', landscape);
       mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
-    };
-    const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
-    const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
-    if (w && h) {
-      doApply();
-    } else {
-      const evt = mediaEl.tagName === 'VIDEO' ? 'loadedmetadata' : 'load';
-      mediaEl.addEventListener(evt, doApply, { once: true });
-    }
+    });
   }
 
   function bindTileOrientation(mediaEl, tileEl) {
-    if (MO) {
-      MO.bindMediaOrientation(mediaEl, tileEl);
-      return;
-    }
-    const apply = () => {
-      const w = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
-      const h = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
-      tileEl.classList.toggle('landscape', w > 0 && h > 0 && w > h);
-      tileEl.classList.toggle('portrait', !(w > 0 && h > 0 && w > h));
-    };
-    if (mediaEl.tagName === 'VIDEO') {
-      mediaEl.addEventListener('loadedmetadata', apply, { once: true });
-    } else if (mediaEl.complete && mediaEl.naturalWidth) {
-      apply();
-    } else {
-      mediaEl.addEventListener('load', apply, { once: true });
-    }
+    MO.bindMediaOrientation(mediaEl, tileEl);
   }
 
   function startClock() {
