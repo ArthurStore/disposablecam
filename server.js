@@ -818,7 +818,7 @@ router.get('/api/recap', async (req, res) => {
   try {
     const { participant, slug } = req.query;
     const settings = await getEventSettings();
-    if (slug && slug !== settings.recapSlug) {
+    if (slug && settings.recapSlug && slug !== settings.recapSlug) {
       return res.status(404).json({ error: 'Recap album not found' });
     }
     const query = participant ? { participantNumber: participant } : {};
