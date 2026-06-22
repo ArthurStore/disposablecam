@@ -16,7 +16,7 @@
 .recap-item.portrait,
 .gallery-item:not(.landscape-item),
 .spotlight:not(.landscape),
-.modal-content.modal-spotlight:not(.landscape),
+.modal-content.modal-spotlight.portrait,
 .review-media:not(.landscape-media) {
   aspect-ratio: 9 / 16;
 }

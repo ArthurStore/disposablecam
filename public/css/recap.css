@@ -627,9 +627,10 @@ body.recap-page {
 
 .modal-content.modal-spotlight {
   position: relative;
-  width: min(92vw, 420px);
-  aspect-ratio: 9 / 16;
-  max-height: 72dvh;
+  aspect-ratio: unset !important;
+  width: auto;
+  max-width: 95vw;
+  max-height: 85dvh;
   height: auto;
   border-radius: 16px;
   overflow: hidden;
@@ -641,18 +642,26 @@ body.recap-page {
   justify-content: center;
 }
 
+.modal-content.modal-spotlight.portrait {
+  width: min(92vw, calc(85dvh * 9 / 16));
+  max-width: min(92vw, calc(85dvh * 9 / 16));
+  aspect-ratio: 9 / 16 !important;
+  max-height: 85dvh;
+}
+
 .modal-content.modal-spotlight.landscape {
-  aspect-ratio: 16 / 9;
-  width: min(92vw, calc(72dvh * 16 / 9));
-  max-width: min(92vw, calc(72dvh * 16 / 9));
-  max-height: 72dvh;
+  aspect-ratio: 16 / 9 !important;
+  width: min(95vw, calc(85dvh * 16 / 9));
+  max-width: min(95vw, calc(85dvh * 16 / 9));
+  max-height: 85dvh;
 }
 
 .modal-content.modal-spotlight img,
 .modal-content.modal-spotlight video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: transparent;
   display: block;
   border-radius: 0;
   box-shadow: none;
@@ -660,6 +669,11 @@ body.recap-page {
 
 .modal-content.modal-spotlight.landscape img,
 .modal-content.modal-spotlight.landscape video {
+  object-fit: contain;
+}
+
+.modal-content.modal-spotlight.portrait img,
+.modal-content.modal-spotlight.portrait video {
   object-fit: contain;
 }
 

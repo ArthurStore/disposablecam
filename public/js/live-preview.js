@@ -170,7 +170,7 @@
     spotlightName.textContent = current.fullName;
     spotlightNumber.textContent = `#${current.participantNumber}`;
 
-    if (current.caption) {
+    if (current.caption && !current.captionBurnedIn) {
       spotlightCaption.textContent = current.caption;
       spotlightCaption.className = 'spotlight-caption ' + (current.captionPosition || 'bottom');
       spotlightCaption.classList.remove('hidden');

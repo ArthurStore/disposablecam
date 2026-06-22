@@ -69,7 +69,7 @@
       modalContent.classList.toggle('landscape', landscape);
       modalContent.classList.toggle('portrait', !landscape);
       modalContent.classList.toggle('phone-rotated', landscape && isPhonePortrait());
-      mediaEl.style.objectFit = landscape ? 'contain' : 'cover';
+      mediaEl.style.objectFit = 'contain';
       if (currentModal && !currentModal._isCover) {
         currentModal._orient = orient;
       }
@@ -301,7 +301,9 @@
   }
 
   function renderModalMedia(p) {
-    modalContent.className = 'modal-content modal-spotlight';
+    const knownOrient = p._orient || 'portrait';
+    const isLandscape = knownOrient === 'landscape';
+    modalContent.className = 'modal-content modal-spotlight ' + (isLandscape ? 'landscape' : 'portrait');
     modalContent.innerHTML = '';
 
     let mediaEl;
@@ -316,14 +318,9 @@
       mediaEl.src = url('uploads/' + p.filename);
     }
 
-    // Apply orientation if known from thumbnail, then confirm once loaded
-    if (p._orient === 'landscape') {
-      modalContent.classList.add('landscape');
-      mediaEl.style.objectFit = 'contain';
-    }
+    mediaEl.style.objectFit = 'contain';
 
     modalContent.appendChild(mediaEl);
-    // applyModalLayout handles both cached (immediate) and not-yet-loaded media
     applyModalLayout(mediaEl);
   }
 
