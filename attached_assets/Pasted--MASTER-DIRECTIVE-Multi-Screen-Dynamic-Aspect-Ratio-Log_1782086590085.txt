@@ -1,0 +1,49 @@
+### MASTER DIRECTIVE: Multi-Screen Dynamic Aspect Ratio Logic, Full-Resolution Modal Repair, and Duplicate Caption Stripping (Ref: /live, /recap, and main app templates)
+
+
+
+Please completely audit and rewrite the media load layout loops, image inspection event hooks, and CSS structural sheets to achieve absolute stability for photo layouts.
+
+
+
+1. Unified Dynamic Aspect Ratio Engine for /live and /recap (Absolute Screen Adaptability)
+
+- Stop Universal 9:16 Railroading: Eliminate any hardcoded or strict CSS `aspect-ratio: 9/16` or `.portrait` wrapper rules applied by default to the image containers inside `/live-preview.html` (the center collage spotlight) and `/recap.html` (the thumbnail cards grid).
+
+- Image Asset Dimension Inspection: In the runtime template generation loops for both pages, instantiate a clean JavaScript `new Image()` probe loop or intercept the media asset's native load event handler.
+
+- Runtime Layout Transformation: Read the real rendered resolution boundaries of the image. 
+
+  * If the image's width is strictly greater than its height (width > height, identifying a true landscape capture), immediately inject the class `.landscape-16-9` onto its layout cell container and set its runtime style to `aspect-ratio: 16/9; width: 100%; height: auto;`.
+
+  * If the image's height is greater than its width (height > width, identifying a portrait capture), inject the class `.portrait-9-16` and apply `aspect-ratio: 9/16`.
+
+- This calculation must ensure that when a user activates auto-rotate on their device and snaps a horizontal landscape photo, the `/live` center spotlight block and `/recap` gallery grids seamlessly dynamically reshape their canvases to landscape view boxes without requiring manual screen rotation.
+
+
+
+2. Full-Resolution Modal Viewer Repair (Fixing the Single-Click "Kotak" Bug in Recap)
+
+- Eradicate Square Clipping: Resolve the bug inside `public/js/recap.js` where clicking a thumbnail triggers a full-screen preview overlay modal but squishes or crops the asset into a compressed square shape.
+
+- CSS Modal Content Optimization: Update the preview modal container styles. Ensure the core wrapper class (e.g., `.modal-content` or `.preview-media-frame`) is styled with `width: auto; max-width: 95vw; max-height: 85vh; object-fit: contain; background: transparent; aspect-ratio: unset !important;`. 
+
+- Inherit Original Asset Bounds: The expanded preview wrapper modal must strictly inherit the computed dynamic aspect ratio of the underlying asset (16:9 or 9:16) so that the image is rendered beautifully in its full native structural resolution without clipping.
+
+
+
+3. Strip Duplicate Captions in /live Feed
+
+- Clean Snapshot Text Overlays: Inspect the rendering cycle inside `public/js/live-preview.js`. Remove the bug causing captions to display as duplicates.
+
+- Enforce Single Snapchat Overlay Rule: Completely strip out and remove any plain text caption block strings appended outside the boundaries of the image frame. The template container must only preserve and display the interactive, full-width semi-transparent black Snapchat-style caption bar directly overlaid on top of the image canvas at its user-saved vertical position.
+
+
+
+4. Login Page Background Geometry & Backdrop Leak Fix (Ref: Screenshot_2026-06-22-06-55-08-02_40deb401b9ffe8e1df2f1cc5ba480b12.jpg)
+
+- Fix Top Blur Clipping: Audit the landing event login stylesheet. Ensure the blurred background wrapper or gradient overlay extends completely from `top: 0` without any padding or margin gaps, eliminating the harsh horizontal color separation visible at the very top edge.
+
+- Eradicate Bottom Pink Leak: Resolve the issue at the bottom of the viewport where the original sharp pink/orange background element leaks or peeks through beneath the dark container. 
+
+- Force Full-Viewport Bounds: Ensure the login container background wrapper strictly enforces `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; min-height: 100vh; object-fit: cover; z-index: -1;` so that the dark overlay mask completely blankets the screen without clipping on different mobile device models.
