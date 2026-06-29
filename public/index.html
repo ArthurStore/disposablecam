@@ -63,9 +63,46 @@
         <h1 id="welcome-event-name">The Moments</h1>
         <p id="welcome-event-subtitle" class="welcome-subtitle">Retreat Event</p>
         <div class="welcome-form">
-          <input type="tel" id="participant-input" inputmode="numeric" pattern="[0-9]*" placeholder="Enter participant number" autocomplete="off">
-          <button id="register-btn" class="btn-primary">Join Event</button>
-          <p id="register-error" class="error-text"></p>
+          <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login">Login</button>
+            <button class="auth-tab" data-tab="register">Daftar</button>
+          </div>
+
+          <!-- Login Form -->
+          <div id="form-login" class="auth-form">
+            <input type="email" id="login-email" placeholder="Email" autocomplete="email" inputmode="email">
+            <div class="input-password-wrap">
+              <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+              <button type="button" class="toggle-pw" data-target="login-password">👁</button>
+            </div>
+            <button id="login-btn" class="btn-primary">Join Event</button>
+            <p id="login-error" class="error-text"></p>
+          </div>
+
+          <!-- Register Form -->
+          <div id="form-register" class="auth-form hidden">
+            <input type="text" id="reg-fullname" placeholder="Nama Lengkap" autocomplete="name">
+            <input type="text" id="reg-nickname" placeholder="Nama Panggilan (tampil di kamera)">
+            <select id="reg-gender">
+              <option value="">— Jenis Kelamin —</option>
+              <option value="Laki - Laki">Laki - Laki</option>
+              <option value="Perempuan">Perempuan</option>
+            </select>
+            <label class="dob-label">Tanggal Lahir
+              <input type="date" id="reg-dob">
+            </label>
+            <input type="email" id="reg-email" placeholder="Email" autocomplete="email" inputmode="email">
+            <div class="input-password-wrap">
+              <input type="password" id="reg-password" placeholder="Password (min. 6 karakter)" autocomplete="new-password">
+              <button type="button" class="toggle-pw" data-target="reg-password">👁</button>
+            </div>
+            <div class="input-password-wrap">
+              <input type="password" id="reg-confirm" placeholder="Konfirmasi Password" autocomplete="new-password">
+              <button type="button" class="toggle-pw" data-target="reg-confirm">👁</button>
+            </div>
+            <button id="reg-btn" class="btn-primary">Daftar</button>
+            <p id="reg-error" class="error-text"></p>
+          </div>
         </div>
       </div>
     </div>

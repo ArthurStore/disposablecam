@@ -1,0 +1,26 @@
+Please refactor the user authentication system and upgrade the Admin Dashboard according to the detailed specifications below:
+
+1. AUTHENTICATION SYSTEM REHAUL (From Participant Number to Full Register/Login)
+- Replace the current "Enter Participant Number" login logic with a complete Email + Password authentication system for users.
+- Create a new registration page/modal collecting the following fields for the `users` collection:
+  * Full Name (Nama Lengkap)
+  * Nickname (Nama Panggilan - This must be the display name shown on the disposable camera interface)
+  * Gender (Jenis Kelamin)
+  * Date of Birth (Tanggal Lahir)
+  * Email Address (Unique)
+  * Password & Confirm Password (Must be encrypted using bcrypt before saving to MongoDB)
+
+2. ADMIN DASHBOARD: USER MANAGEMENT UPGRADE
+- Completely rewrite the User Management section in the Admin Dashboard (replace the old participant input/import system).
+- Implement a real-time "User Monitor List" table that displays all registered users with their details (Full Name, Nickname, Email, Gender, Registration Date).
+- Add actionable buttons for each user row to perform the following administrative tasks:
+  * DELETE USER: Completely remove the user and their associated session from the database.
+  * BAN/SUSPEND USER: Add a `status` field (e.g., active/banned) to the user schema. Banned users must be blocked from logging in or using the camera, displaying a custom restricted message instead.
+  * ADD MANUAL USER: Add a button/modal inside the admin panel allowing the admin to manually register a user by filling out all required fields (Name, Nickname, Gender, DOB, Email, and Password).
+
+3. ADMIN DASHBOARD: EDIT USER PROFILE MODAL
+- Inside the User Monitor List, add an "Edit" button for each user.
+- Clicking "Edit" must open a modal pre-filled with that specific user's current data.
+- The admin must be able to modify their Full Name, Nickname, Email, Gender, and type in a new Password to force-reset it from the admin panel if they forget it.
+
+Ensure all backend routes, data validation rules, and schema updates in MongoDB are applied safely without breaking existing database collections like `adminpins` or `eventsettings`.

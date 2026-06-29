@@ -155,6 +155,17 @@ function normalizeGender(gender) {
   return null;
 }
 
+/** Auto-generate next available participant number (3-digit zero-padded) */
+async function generateParticipantNumber() {
+  const users = await User.find({}, 'participantNumber');
+  let max = 0;
+  users.forEach((u) => {
+    const n = parseInt(String(u.participantNumber || '').replace(/\D/g, ''), 10);
+    if (!isNaN(n) && n > max) max = n;
+  });
+  return String(max + 1).padStart(3, '0');
+}
+
 function escapeDrawtext(text) {
   return String(text || '')
     .slice(0, 200)
@@ -235,6 +246,72 @@ async function initEventSettings() {
 //  API ROUTES
 // ═══════════════════════════════════════
 
+router.post('/api/register', async (req, res) => {
+  try {
+    const { fullName, nickname, gender, dateOfBirth, email, password, confirmPassword } = req.body;
+    if (!fullName || !nickname || !gender || !email || !password) {
+      return res.status(400).json({ error: 'Semua field wajib diisi' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ error: 'Password tidak sama' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password minimal 6 karakter' });
+    }
+    const emailClean = email.toLowerCase().trim();
+    const existing = await User.findOne({ email: emailClean });
+    if (existing) return res.status(409).json({ error: 'Email sudah terdaftar' });
+    const genderNorm = normalizeGender(gender) === 'L' ? 'Laki - Laki' : 'Perempuan';
+    const participantNumber = await generateParticipantNumber();
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      participantNumber,
+      fullName: fullName.trim(),
+      nickname: nickname.trim(),
+      gender: genderNorm,
+      email: emailClean,
+      password: hashedPassword,
+      dateOfBirth: dateOfBirth || null,
+      status: 'active',
+      isBanned: false
+    });
+    res.json({
+      id: user._id,
+      participantNumber: user.participantNumber,
+      fullName: user.fullName,
+      nickname: user.nickname,
+      gender: user.gender,
+      email: user.email
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email dan password diperlukan' });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user || !user.password) return res.status(404).json({ error: 'Akun tidak ditemukan' });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ error: 'Password salah' });
+    if (user.isBanned || user.status === 'banned') {
+      return res.status(403).json({ error: 'Akun kamu telah di-suspend. Hubungi admin.' });
+    }
+    res.json({
+      id: user._id,
+      participantNumber: user.participantNumber,
+      fullName: user.fullName,
+      nickname: user.nickname || user.fullName,
+      gender: user.gender,
+      email: user.email
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.post('/api/validate', async (req, res) => {
   try {
     const { participantNumber } = req.body;
@@ -245,6 +322,7 @@ router.post('/api/validate', async (req, res) => {
       id: user._id,
       participantNumber: user.participantNumber,
       fullName: user.fullName,
+      nickname: user.nickname || user.fullName,
       gender: normalizeGender(user.gender) || user.gender
     });
   } catch (err) {
@@ -541,7 +619,7 @@ router.get('/api/admin/stats', async (req, res) => {
 
 router.get('/api/admin/users', async (req, res) => {
   try {
-    const users = await User.find().sort({ participantNumber: 1 });
+    const users = await User.find().sort({ fullName: 1 }).select('-password');
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -554,13 +632,60 @@ router.get('/api/admin/presence', (req, res) => {
 
 router.post('/api/admin/users', async (req, res) => {
   try {
-    const { participantNumber, fullName, gender } = req.body;
-    const existing = await User.findOne({ participantNumber });
-    if (existing) return res.status(409).json({ error: 'Participant number already exists' });
-    const user = await User.create({ participantNumber, fullName, gender });
-    res.json(user);
+    const { fullName, nickname, gender, dateOfBirth, email, password } = req.body;
+    if (!fullName || !gender || !email || !password) {
+      return res.status(400).json({ error: 'Nama, gender, email, dan password wajib diisi' });
+    }
+    const emailClean = email.toLowerCase().trim();
+    const existing = await User.findOne({ email: emailClean });
+    if (existing) return res.status(409).json({ error: 'Email sudah digunakan' });
+    const genderNorm = normalizeGender(gender) === 'L' ? 'Laki - Laki' : 'Perempuan';
+    const participantNumber = await generateParticipantNumber();
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      participantNumber,
+      fullName: fullName.trim(),
+      nickname: (nickname || '').trim(),
+      gender: genderNorm,
+      email: emailClean,
+      password: hashedPassword,
+      dateOfBirth: dateOfBirth || null,
+      status: 'active',
+      isBanned: false
+    });
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.json(userObj);
   } catch (err) {
     res.status(500).json({ error: 'Failed to add user' });
+  }
+});
+
+router.patch('/api/admin/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const { fullName, nickname, gender, email, password, dateOfBirth } = req.body;
+    if (fullName) user.fullName = fullName.trim();
+    if (nickname !== undefined) user.nickname = nickname.trim();
+    if (gender) user.gender = normalizeGender(gender) === 'L' ? 'Laki - Laki' : 'Perempuan';
+    if (dateOfBirth !== undefined) user.dateOfBirth = dateOfBirth || null;
+    if (email) {
+      const emailClean = email.toLowerCase().trim();
+      const dup = await User.findOne({ email: emailClean, _id: { $ne: user._id } });
+      if (dup) return res.status(409).json({ error: 'Email sudah digunakan akun lain' });
+      user.email = emailClean;
+    }
+    if (password) {
+      if (password.length < 6) return res.status(400).json({ error: 'Password minimal 6 karakter' });
+      user.password = await bcrypt.hash(password, 10);
+    }
+    await user.save();
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.json({ success: true, user: userObj });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update user' });
   }
 });
 
@@ -569,6 +694,7 @@ router.patch('/api/admin/users/:id/ban', async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     user.isBanned = !user.isBanned;
+    user.status = user.isBanned ? 'banned' : 'active';
     await user.save();
     if (user.isBanned) {
       io.emit('participant-revoked', { participantNumber: user.participantNumber, reason: 'banned' });

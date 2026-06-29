@@ -39,21 +39,9 @@
   const diskText = document.getElementById('disk-text');
   const sysInfo = document.getElementById('sys-info');
 
-  const importData = document.getElementById('import-data');
-  const importBtn = document.getElementById('import-btn');
-  const importResult = document.getElementById('import-result');
-
-  const addNumber = document.getElementById('add-number');
-  const addName = document.getElementById('add-name');
-  const addGender = document.getElementById('add-gender');
-  const addUserBtn = document.getElementById('add-user-btn');
-  const addResult = document.getElementById('add-result');
-
   const usersTbody = document.getElementById('users-tbody');
   const rosterSearch = document.getElementById('roster-search');
   const rosterTotal = document.getElementById('roster-total');
-  const expandAllBtn = document.getElementById('expand-all');
-  const minimizeAllBtn = document.getElementById('minimize-all');
   const adminChatFeed = document.getElementById('admin-chat-feed');
   const adminPrivateFeed = document.getElementById('admin-private-feed');
 
@@ -61,8 +49,6 @@
   let presenceMap = new Map();
   let rosterGenderFilter = 'all';
   let rosterConnFilter = 'all';
-  let rosterSortOrder = 'asc';
-  let rosterExpanded = true;
 
   const evtName = document.getElementById('evt-name');
   const evtSubtitle = document.getElementById('evt-subtitle');
@@ -463,52 +449,93 @@
     else el.style.background = '#22c55e';
   }
 
-  importBtn.addEventListener('click', async () => {
-    const data = importData.value.trim();
-    if (!data) { setResult(importResult, 'Paste participant data first', 'error'); return; }
-    importBtn.disabled = true;
-    importBtn.textContent = 'Importing…';
-    try {
-      const res = await fetch(api('admin/import-participants'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data })
-      });
-      const result = await res.json();
-      if (res.ok) {
-        setResult(importResult, `Imported: ${result.imported}, Skipped: ${result.skipped}`, 'success');
-        loadUsers(); loadStats();
-      } else {
-        setResult(importResult, result.error || 'Import failed', 'error');
-      }
-    } catch (err) {
-      setResult(importResult, 'Connection error', 'error');
-    } finally {
-      importBtn.disabled = false;
-      importBtn.textContent = 'Import';
-    }
+  // ─── Add User Modal ───
+  function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+  document.querySelectorAll('[data-close]').forEach((btn) => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.close));
+  });
+  document.querySelectorAll('.admin-modal').forEach((modal) => {
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(modal.id); });
   });
 
-  addUserBtn.addEventListener('click', async () => {
-    const num = addNumber.value.trim();
-    const name = addName.value.trim();
-    const gender = addGender.value;
-    if (!num || !name) { setResult(addResult, 'Fill in all fields', 'error'); return; }
+  const openAddUserBtn = document.getElementById('open-add-user-modal');
+  if (openAddUserBtn) openAddUserBtn.addEventListener('click', () => {
+    ['mu-fullname','mu-nickname','mu-email','mu-password','mu-dob'].forEach((id) => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const g = document.getElementById('mu-gender'); if (g) g.value = '';
+    const err = document.getElementById('mu-error'); if (err) err.textContent = '';
+    openModal('modal-add-user');
+  });
+
+  const submitAddUser = document.getElementById('submit-add-user');
+  if (submitAddUser) submitAddUser.addEventListener('click', async () => {
+    const fullName = (document.getElementById('mu-fullname').value || '').trim();
+    const nickname = (document.getElementById('mu-nickname').value || '').trim();
+    const gender = document.getElementById('mu-gender').value;
+    const dateOfBirth = document.getElementById('mu-dob').value;
+    const email = (document.getElementById('mu-email').value || '').trim();
+    const password = document.getElementById('mu-password').value;
+    const errEl = document.getElementById('mu-error');
+    if (!fullName || !gender || !email || !password) {
+      if (errEl) errEl.textContent = 'Nama, gender, email, dan password wajib diisi';
+      return;
+    }
+    submitAddUser.disabled = true; submitAddUser.textContent = 'Menyimpan…';
     try {
       const res = await fetch(api('admin/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantNumber: num, fullName: name, gender })
+        body: JSON.stringify({ fullName, nickname, gender, dateOfBirth, email, password })
       });
       const data = await res.json();
       if (res.ok) {
-        setResult(addResult, `Added: ${name} (#${num})`, 'success');
-        addNumber.value = ''; addName.value = '';
+        closeModal('modal-add-user');
         loadUsers(); loadStats();
       } else {
-        setResult(addResult, data.error || 'Failed to add', 'error');
+        if (errEl) errEl.textContent = data.error || 'Gagal menambah user';
       }
-    } catch (err) { setResult(addResult, 'Connection error', 'error'); }
+    } catch (err) {
+      if (errEl) errEl.textContent = 'Koneksi error';
+    } finally {
+      submitAddUser.disabled = false; submitAddUser.textContent = 'Simpan';
+    }
+  });
+
+  // ─── Edit User Modal ───
+  const submitEditUser = document.getElementById('submit-edit-user');
+  if (submitEditUser) submitEditUser.addEventListener('click', async () => {
+    const id = document.getElementById('eu-id').value;
+    const fullName = (document.getElementById('eu-fullname').value || '').trim();
+    const nickname = (document.getElementById('eu-nickname').value || '').trim();
+    const gender = document.getElementById('eu-gender').value;
+    const dateOfBirth = document.getElementById('eu-dob').value;
+    const email = (document.getElementById('eu-email').value || '').trim();
+    const password = document.getElementById('eu-password').value;
+    const errEl = document.getElementById('eu-error');
+    submitEditUser.disabled = true; submitEditUser.textContent = 'Menyimpan…';
+    try {
+      const body = { fullName, nickname, gender, dateOfBirth, email };
+      if (password) body.password = password;
+      const res = await fetch(api('admin/users/' + encodeURIComponent(id)), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        closeModal('modal-edit-user');
+        loadUsers();
+      } else {
+        if (errEl) errEl.textContent = data.error || 'Gagal menyimpan';
+      }
+    } catch (err) {
+      if (errEl) errEl.textContent = 'Koneksi error';
+    } finally {
+      submitEditUser.disabled = false; submitEditUser.textContent = 'Simpan';
+    }
   });
 
   async function loadUsers() {
@@ -528,6 +555,13 @@
     return g || '—';
   }
 
+  function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      return new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) { return '—'; }
+  }
+
   function getFilteredUsers() {
     const q = (rosterSearch && rosterSearch.value || '').trim().toLowerCase();
     let list = [...allUsers];
@@ -535,60 +569,73 @@
     if (rosterGenderFilter !== 'all') {
       list = list.filter((u) => formatGenderLabel(u.gender) === rosterGenderFilter);
     }
-
     if (rosterConnFilter === 'online') {
       list = list.filter((u) => !u.isBanned && isUserOnline(u));
     } else if (rosterConnFilter === 'offline') {
       list = list.filter((u) => u.isBanned || !isUserOnline(u));
     }
-
     if (q) {
       list = list.filter((u) =>
         (u.fullName || '').toLowerCase().includes(q) ||
-        String(u.participantNumber || '').toLowerCase().includes(q)
+        (u.nickname || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        String(u.participantNumber || '').includes(q)
       );
     }
-
-    list.sort((a, b) => {
-      const na = parseInt(String(a.participantNumber).replace(/\D/g, ''), 10) || 0;
-      const nb = parseInt(String(b.participantNumber).replace(/\D/g, ''), 10) || 0;
-      return rosterSortOrder === 'asc' ? na - nb : nb - na;
-    });
-
+    list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'id'));
     return list;
   }
 
   function renderUsersTable() {
     const users = getFilteredUsers();
-    const onlineCount = users.filter((u) => !u.isBanned && isUserOnline(u)).length;
+    const onlineCount = allUsers.filter((u) => !u.isBanned && isUserOnline(u)).length;
     if (rosterTotal) {
-      rosterTotal.textContent = `Total Registered Members: ${allUsers.length} · Online: ${onlineCount}`;
+      rosterTotal.textContent = `Total: ${allUsers.length} pengguna · Online: ${onlineCount}`;
     }
     usersTbody.innerHTML = '';
 
-    if (!rosterExpanded) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="6" class="roster-collapsed-msg">Table minimized — click Expand All to show ${users.length} row(s)</td>`;
-      usersTbody.appendChild(tr);
+    if (!users.length) {
+      usersTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-dim)">Tidak ada pengguna</td></tr>';
       return;
     }
 
-    users.forEach((u) => {
+    users.forEach((u, idx) => {
       const tr = document.createElement('tr');
       const genderLabel = formatGenderLabel(u.gender);
-      const device = getUserDevice(u);
+      const genderBadge = genderLabel === 'Laki - Laki' ? '♂ L' : '♀ P';
+      const dobStr = u.dateOfBirth ? formatDate(u.dateOfBirth) : '—';
+      const regStr = formatDate(u.registeredAt);
       tr.innerHTML = `
-        <td>${escapeHtml(u.participantNumber)}</td>
-        <td>${escapeHtml(u.fullName)}</td>
-        <td>${genderLabel === 'Laki - Laki' ? '♂ Laki - Laki' : '♀ Perempuan'}</td>
+        <td class="num-cell">${String(idx + 1).padStart(2, '0')}</td>
+        <td><strong>${escapeHtml(u.fullName || '—')}</strong><br><small style="color:var(--text-dim)">#${escapeHtml(u.participantNumber || '')}</small></td>
+        <td>${escapeHtml(u.nickname || '—')}</td>
+        <td class="email-cell">${escapeHtml(u.email || '—')}</td>
+        <td>${genderBadge}</td>
+        <td>${regStr}</td>
         <td>${renderConnectionStatus(u)}</td>
-        <td class="device-cell">${escapeHtml(formatDeviceLabel(device))}</td>
         <td class="action-cell">
+          <button class="btn-edit-user" data-id="${u._id}" title="Edit">✏️</button>
           <button class="btn-ban ${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}">${u.isBanned ? 'Unban' : 'Ban'}</button>
-          <button class="btn-delete" data-id="${u._id}">Delete</button>
+          <button class="btn-delete" data-id="${u._id}">Hapus</button>
         </td>
       `;
       usersTbody.appendChild(tr);
+    });
+
+    usersTbody.querySelectorAll('.btn-edit-user').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const u = allUsers.find((x) => x._id === btn.dataset.id);
+        if (!u) return;
+        document.getElementById('eu-id').value = u._id;
+        document.getElementById('eu-fullname').value = u.fullName || '';
+        document.getElementById('eu-nickname').value = u.nickname || '';
+        document.getElementById('eu-gender').value = formatGenderLabel(u.gender);
+        document.getElementById('eu-dob').value = u.dateOfBirth ? u.dateOfBirth.slice(0, 10) : '';
+        document.getElementById('eu-email').value = u.email || '';
+        document.getElementById('eu-password').value = '';
+        const errEl = document.getElementById('eu-error'); if (errEl) errEl.textContent = '';
+        openModal('modal-edit-user');
+      });
     });
 
     usersTbody.querySelectorAll('.btn-ban').forEach((btn) => {
@@ -603,9 +650,8 @@
     usersTbody.querySelectorAll('.btn-delete').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const row = btn.closest('tr');
-        const name = row.children[1].textContent;
-        const num = row.children[0].textContent;
-        if (!confirm(`Delete participant ${name} (#${num})? This revokes their access immediately.`)) return;
+        const name = row.querySelector('strong') ? row.querySelector('strong').textContent : 'user ini';
+        if (!confirm(`Hapus ${name}? Akses mereka akan langsung dicabut.`)) return;
         try {
           const res = await fetch(api('admin/users/' + encodeURIComponent(btn.dataset.id)), { method: 'DELETE' });
           if (res.ok) { loadUsers(); loadStats(); }
@@ -614,9 +660,7 @@
     });
   }
 
-  if (rosterSearch) {
-    rosterSearch.addEventListener('input', renderUsersTable);
-  }
+  if (rosterSearch) rosterSearch.addEventListener('input', renderUsersTable);
 
   document.querySelectorAll('.roster-filter[data-gender]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -633,27 +677,6 @@
       renderUsersTable();
     });
   });
-
-  document.querySelectorAll('.roster-sort-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.roster-sort-btn').forEach((b) => b.classList.toggle('active', b === btn));
-      rosterSortOrder = btn.dataset.order;
-      renderUsersTable();
-    });
-  });
-
-  if (expandAllBtn) {
-    expandAllBtn.addEventListener('click', () => {
-      rosterExpanded = true;
-      renderUsersTable();
-    });
-  }
-  if (minimizeAllBtn) {
-    minimizeAllBtn.addEventListener('click', () => {
-      rosterExpanded = false;
-      renderUsersTable();
-    });
-  }
 
   function formatBytes(bytes) {
     if (bytes === 0) return '0 B';

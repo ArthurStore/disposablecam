@@ -73,9 +73,19 @@
 
   // ─── DOM refs ───
   const registrationModal = document.getElementById('registration-modal');
-  const participantInput = document.getElementById('participant-input');
-  const registerBtn = document.getElementById('register-btn');
-  const registerError = document.getElementById('register-error');
+  const loginEmail = document.getElementById('login-email');
+  const loginPassword = document.getElementById('login-password');
+  const loginBtn = document.getElementById('login-btn');
+  const loginError = document.getElementById('login-error');
+  const regFullname = document.getElementById('reg-fullname');
+  const regNickname = document.getElementById('reg-nickname');
+  const regGender = document.getElementById('reg-gender');
+  const regDob = document.getElementById('reg-dob');
+  const regEmail = document.getElementById('reg-email');
+  const regPassword = document.getElementById('reg-password');
+  const regConfirm = document.getElementById('reg-confirm');
+  const regBtn = document.getElementById('reg-btn');
+  const regError = document.getElementById('reg-error');
   const appEl = document.getElementById('app');
   const userName = document.getElementById('user-name');
   const userNumber = document.getElementById('user-number');
@@ -645,7 +655,25 @@
     }
   }
 
-  // ─── Registration ───
+  // ─── Auth Tab switching ───
+  document.querySelectorAll('.auth-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.auth-tab').forEach((t) => t.classList.toggle('active', t === tab));
+      const target = tab.dataset.tab;
+      document.getElementById('form-login').classList.toggle('hidden', target !== 'login');
+      document.getElementById('form-register').classList.toggle('hidden', target !== 'register');
+    });
+  });
+
+  document.querySelectorAll('.toggle-pw').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+  });
+
+  // ─── Session ───
   function checkSession() {
     loadEventConfig();
     const saved = localStorage.getItem('dc_user');
@@ -663,38 +691,70 @@
     showOrientationModal();
   }
 
-  registerBtn.addEventListener('click', doRegister);
-  participantInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doRegister(); });
+  if (loginBtn) loginBtn.addEventListener('click', doLogin);
+  if (loginPassword) loginPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  if (regBtn) regBtn.addEventListener('click', doRegisterUser);
 
-  async function doRegister() {
-    const num = participantInput.value.trim();
-    if (!num) { registerError.textContent = 'Please enter your participant number'; return; }
-    registerBtn.disabled = true;
-    registerBtn.textContent = 'Checking…';
-    registerError.textContent = '';
+  async function doLogin() {
+    const email = loginEmail ? loginEmail.value.trim() : '';
+    const password = loginPassword ? loginPassword.value : '';
+    if (!email || !password) { if (loginError) loginError.textContent = 'Masukkan email dan password'; return; }
+    if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = 'Memeriksa…'; }
+    if (loginError) loginError.textContent = '';
     try {
-      const res = await fetch(api('validate'), {
+      const res = await fetch(api('login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantNumber: num })
+        body: JSON.stringify({ email, password })
       });
       const data = await res.json();
-      if (!res.ok) { registerError.textContent = data.error || 'Validation failed'; return; }
+      if (!res.ok) { if (loginError) loginError.textContent = data.error || 'Login gagal'; return; }
       currentUser = data;
       localStorage.setItem('dc_user', JSON.stringify(data));
       showApp();
     } catch (err) {
-      registerError.textContent = 'Connection error. Try again.';
+      if (loginError) loginError.textContent = 'Koneksi error. Coba lagi.';
     } finally {
-      registerBtn.disabled = false;
-      registerBtn.textContent = 'Join Event';
+      if (loginBtn) { loginBtn.disabled = false; loginBtn.textContent = 'Join Event'; }
+    }
+  }
+
+  async function doRegisterUser() {
+    const fullName = regFullname ? regFullname.value.trim() : '';
+    const nickname = regNickname ? regNickname.value.trim() : '';
+    const gender = regGender ? regGender.value : '';
+    const dateOfBirth = regDob ? regDob.value : '';
+    const email = regEmail ? regEmail.value.trim() : '';
+    const password = regPassword ? regPassword.value : '';
+    const confirmPassword = regConfirm ? regConfirm.value : '';
+    if (!fullName || !nickname || !gender || !email || !password || !confirmPassword) {
+      if (regError) regError.textContent = 'Semua field wajib diisi';
+      return;
+    }
+    if (regBtn) { regBtn.disabled = true; regBtn.textContent = 'Mendaftar…'; }
+    if (regError) regError.textContent = '';
+    try {
+      const res = await fetch(api('register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName, nickname, gender, dateOfBirth, email, password, confirmPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) { if (regError) regError.textContent = data.error || 'Registrasi gagal'; return; }
+      currentUser = data;
+      localStorage.setItem('dc_user', JSON.stringify(data));
+      showApp();
+    } catch (err) {
+      if (regError) regError.textContent = 'Koneksi error. Coba lagi.';
+    } finally {
+      if (regBtn) { regBtn.disabled = false; regBtn.textContent = 'Daftar'; }
     }
   }
 
   function showApp() {
     registrationModal.classList.add('hidden');
     appEl.classList.remove('hidden');
-    const displayName = truncateName(currentUser.fullName);
+    const displayName = currentUser.nickname || truncateName(currentUser.fullName);
     userName.textContent = displayName;
     userNumber.textContent = `#${currentUser.participantNumber}`;
     const genderNorm = (currentUser.gender || '').toString().trim().toUpperCase();

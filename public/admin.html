@@ -121,57 +121,26 @@
       <p class="sys-info" id="sys-info"></p>
     </section>
 
-    <!-- Import participants -->
-    <section class="panel">
-      <h2>Import Participants</h2>
-      <p class="panel-desc">Paste Markdown table (No Peserta | Name | Gender L/P)</p>
-      <textarea id="import-data" rows="6" placeholder="001 | John Doe | L
-002 | Jane Smith | P
-003 | Ahmad Rizki | L"></textarea>
-      <button id="import-btn" class="btn-primary">Import</button>
-      <p id="import-result" class="result-text"></p>
-    </section>
-
-    <!-- Add single participant -->
-    <section class="panel">
-      <h2>Add Participant</h2>
-      <div class="form-row">
-        <input type="text" id="add-number" placeholder="No. Peserta">
-        <input type="text" id="add-name" placeholder="Full Name">
-        <select id="add-gender">
-          <option value="L">Male (L)</option>
-          <option value="P">Female (P)</option>
-        </select>
-        <button id="add-user-btn" class="btn-primary">Add</button>
-      </div>
-      <p id="add-result" class="result-text"></p>
-    </section>
-
-    <!-- Participant list -->
+    <!-- User Monitor -->
     <section class="panel">
       <div class="roster-header">
-        <h2>Participant List</h2>
-        <p id="roster-total" class="roster-total">Total Registered Members: 0</p>
+        <div>
+          <h2>User Monitor</h2>
+          <p id="roster-total" class="roster-total">Total: 0 pengguna</p>
+        </div>
+        <button id="open-add-user-modal" class="btn-primary">+ Add User</button>
       </div>
       <div class="roster-toolbar">
-        <input type="search" id="roster-search" placeholder="Search by name or number…" autocomplete="off">
+        <input type="search" id="roster-search" placeholder="Cari nama, email, nickname…" autocomplete="off">
         <div class="roster-filters">
-          <button id="filter-all" class="roster-filter active" data-gender="all">All</button>
-          <button id="filter-male" class="roster-filter" data-gender="Laki - Laki">Laki - Laki</button>
-          <button id="filter-female" class="roster-filter" data-gender="Perempuan">Perempuan</button>
+          <button class="roster-filter active" data-gender="all">All</button>
+          <button class="roster-filter" data-gender="Laki - Laki">Laki - Laki</button>
+          <button class="roster-filter" data-gender="Perempuan">Perempuan</button>
         </div>
         <div class="roster-online-filters">
-          <button id="filter-conn-all" class="roster-filter active" data-conn="all">All Status</button>
-          <button id="filter-conn-online" class="roster-filter" data-conn="online"><span class="status-dot online"></span>Online</button>
-          <button id="filter-conn-offline" class="roster-filter" data-conn="offline"><span class="status-dot offline"></span>Offline</button>
-        </div>
-        <div class="roster-sort">
-          <button id="sort-asc" class="roster-sort-btn active" data-order="asc">No. ↑</button>
-          <button id="sort-desc" class="roster-sort-btn" data-order="desc">No. ↓</button>
-        </div>
-        <div class="roster-expand">
-          <button id="expand-all" class="btn-outline-sm">Expand All</button>
-          <button id="minimize-all" class="btn-outline-sm">Minimize All</button>
+          <button class="roster-filter active" data-conn="all">All Status</button>
+          <button class="roster-filter" data-conn="online"><span class="status-dot online"></span>Online</button>
+          <button class="roster-filter" data-conn="offline"><span class="status-dot offline"></span>Offline</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -179,10 +148,12 @@
           <thead>
             <tr>
               <th>No.</th>
-              <th>Name</th>
+              <th>Full Name</th>
+              <th>Nickname</th>
+              <th>Email</th>
               <th>Gender</th>
-              <th>Connection</th>
-              <th>Device</th>
+              <th>Tgl Daftar</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -190,6 +161,66 @@
         </table>
       </div>
     </section>
+
+    <!-- Add User Modal -->
+    <div id="modal-add-user" class="admin-modal hidden">
+      <div class="admin-modal-box">
+        <div class="admin-modal-header">
+          <h3>Tambah User Baru</h3>
+          <button class="modal-close-x" data-close="modal-add-user">✕</button>
+        </div>
+        <div class="admin-modal-body">
+          <label>Nama Lengkap *<input type="text" id="mu-fullname" placeholder="Nama Lengkap"></label>
+          <label>Nickname *<input type="text" id="mu-nickname" placeholder="Nama Panggilan"></label>
+          <label>Jenis Kelamin *
+            <select id="mu-gender">
+              <option value="">— Pilih —</option>
+              <option value="Laki - Laki">Laki - Laki</option>
+              <option value="Perempuan">Perempuan</option>
+            </select>
+          </label>
+          <label>Tanggal Lahir<input type="date" id="mu-dob"></label>
+          <label>Email *<input type="email" id="mu-email" placeholder="email@example.com"></label>
+          <label>Password *<input type="password" id="mu-password" placeholder="Min. 6 karakter"></label>
+          <p id="mu-error" class="modal-error"></p>
+        </div>
+        <div class="admin-modal-footer">
+          <button class="btn-outline" data-close="modal-add-user">Batal</button>
+          <button id="submit-add-user" class="btn-primary">Simpan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="modal-edit-user" class="admin-modal hidden">
+      <div class="admin-modal-box">
+        <div class="admin-modal-header">
+          <h3>Edit Profil User</h3>
+          <button class="modal-close-x" data-close="modal-edit-user">✕</button>
+        </div>
+        <div class="admin-modal-body">
+          <input type="hidden" id="eu-id">
+          <label>Nama Lengkap<input type="text" id="eu-fullname" placeholder="Nama Lengkap"></label>
+          <label>Nickname<input type="text" id="eu-nickname" placeholder="Nama Panggilan"></label>
+          <label>Jenis Kelamin
+            <select id="eu-gender">
+              <option value="Laki - Laki">Laki - Laki</option>
+              <option value="Perempuan">Perempuan</option>
+            </select>
+          </label>
+          <label>Tanggal Lahir<input type="date" id="eu-dob"></label>
+          <label>Email<input type="email" id="eu-email" placeholder="email@example.com"></label>
+          <label>Password Baru <small>(kosongkan jika tidak diganti)</small>
+            <input type="password" id="eu-password" placeholder="Password baru…">
+          </label>
+          <p id="eu-error" class="modal-error"></p>
+        </div>
+        <div class="admin-modal-footer">
+          <button class="btn-outline" data-close="modal-edit-user">Batal</button>
+          <button id="submit-edit-user" class="btn-primary">Simpan</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Live Chat Monitor -->
     <section class="panel chat-monitor-panel">
